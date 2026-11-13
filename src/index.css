@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    font-family: "Noto Sans Thai", "Plus Jakarta Sans", Tahoma, sans-serif;
+    color: #233e5c;
+    background-color: #f2f7fd;
+  }
+
+  .font-mono-num {
+    font-family: "IBM Plex Mono", "Noto Sans Thai", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-expand {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-panel {
+    display: block !important;
+    margin-bottom: 20px !important;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+
+  .print-heading {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    break-after: avoid;
+  }
+}

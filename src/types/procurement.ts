@@ -1,0 +1,230 @@
+export type UserRole = 'admin' | 'staff';
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+export type PageId =
+  | 'dashboard'
+  | 'inbox'
+  | 'register'
+  | 'overdue'
+  | 'excel'
+  | 'workflow'
+  | 'guide';
+
+export type ProjectTabId =
+  | 'general'
+  | 'tor'
+  | 'order'
+  | 'acceptance'
+  | 'voucher';
+
+export type ProjectStatus =
+  | 'รอดำเนินการ'
+  | 'กำลังดำเนินการ'
+  | 'รออนุมัติ'
+  | 'ส่งกลับแก้ไข'
+  | 'พักงาน'
+  | 'เสร็จสิ้น'
+  | 'ยกเลิก';
+
+export type ProjectType = 'ซื้อ' | 'จ้าง' | 'อื่น ๆ';
+
+export type CommitteeRole = 'ประธานกรรมการ' | 'กรรมการ' | 'กรรมการและเลขานุการ';
+
+export type AcceptanceResult =
+  | 'ตรวจรับถูกต้องครบถ้วน'
+  | 'ตรวจรับบางส่วน'
+  | 'ให้แก้ไขก่อนตรวจรับ'
+  | 'ไม่ผ่านการตรวจรับ';
+
+export type AttachmentCategory = 'general' | 'tor' | 'order' | 'acceptance' | 'voucher';
+
+export type WorkflowRequiredField =
+  | 'title'
+  | 'department'
+  | 'method'
+  | 'fund'
+  | 'budget'
+  | 'reference'
+  | 'agreed'
+  | 'vendor'
+  | 'docNo'
+  | 'docDate'
+  | 'due'
+  | 'start'
+  | 'assignee';
+
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  next: string[];
+  roles: UserRole[];
+  required: WorkflowRequiredField[];
+  condition?: string;
+  documents?: string[];
+}
+
+export interface CommitteeMember {
+  sequence?: number;
+  name: string;
+  position: string;
+  role: CommitteeRole;
+}
+
+export interface AcceptanceRound {
+  sequence?: number;
+  round: number;
+  date: string;
+  result: AcceptanceResult | '';
+  notes: string;
+}
+
+export interface AttachmentFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  category: AttachmentCategory;
+  data?: string; // Data URL (data:...;base64,...) for local/offline fallback
+  url?: string; // Google Drive webViewLink / download URL
+  driveFileId?: string;
+}
+
+export interface StageDataEntry {
+  docNo: string;
+  docDate: string;
+  start: string;
+  due: string;
+  finished: string;
+}
+
+export interface HistoryEntry {
+  at: string;
+  by: string;
+  action: string;
+}
+
+export interface ProjectDetails {
+  torOrderNo?: string;
+  torOrderDate?: string;
+  torPreparedDate?: string;
+  torDate?: string;
+  referenceDate?: string;
+  torNo?: string;
+  torAuthor?: string;
+  torNotes?: string;
+  torMembers?: CommitteeMember[];
+  deliveryDue?: string;
+  orderNotes?: string;
+  committeeNo?: string;
+  committeeDate?: string;
+  committeeNames?: string;
+  acceptanceNo?: string;
+  acceptanceDate?: string;
+  acceptanceNotes?: string;
+  acceptanceMembers?: CommitteeMember[];
+  acceptanceRounds?: AcceptanceRound[];
+  voucherNo?: string;
+  voucherDate?: string;
+  voucherAmount?: number | '';
+  paymentDate?: string;
+  voucherNotes?: string;
+}
+
+export interface ProjectRecord {
+  id: string;
+  code: string;
+  year: number;
+  title: string;
+  department: string;
+  responsibleName: string;
+  type: ProjectType;
+  method: string;
+  fund: string;
+  budget: number;
+  reference: number;
+  agreed: number;
+  assignee: string;
+  vendor: string;
+  start: string;
+  due: string;
+  docNo: string;
+  docDate: string;
+  notes: string;
+  status: ProjectStatus;
+  step: string;
+  ack: boolean;
+  projectDetails: ProjectDetails;
+  stageData: Record<string, StageDataEntry>;
+  files: AttachmentFile[];
+  history: HistoryEntry[];
+}
+
+export interface ProcurementState {
+  version: number;
+  steps: WorkflowStep[];
+  rows: ProjectRecord[];
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export type SortKey =
+  | 'code'
+  | 'year'
+  | 'title'
+  | 'docNo'
+  | 'docDate'
+  | 'budget'
+  | 'agreed'
+  | 'responsibleName'
+  | 'step'
+  | 'status'
+  | 'due';
+
+export interface ViewFilter {
+  year: string;
+  status: string;
+  q: string;
+  sort: SortKey;
+  dir: SortDirection;
+}
+
+export interface FinancialSums {
+  budget: number;
+  reference: number;
+  agreed: number;
+  voucher: number;
+}
+
+export interface ImportErrorItem {
+  sheet: string;
+  row: number;
+  code: string;
+  message: string;
+}
+
+export interface ImportPreviewItem {
+  record: ProjectRecord;
+  mode: 'insert' | 'update';
+  existingId?: string;
+  hasAttachmentRows: boolean;
+}
+
+export interface ImportPlan {
+  items: ImportPreviewItem[];
+  good: ProjectRecord[];
+  insertCount: number;
+  updateCount: number;
+  errors: ImportErrorItem[];
+  badProjects: number;
+  years: Record<number, number>;
+  totalRows: number;
+  targetYear: string;
+  workflowSnapshot: string;
+}
+
+export type SyncState = 'idle' | 'syncing' | 'synced' | 'local' | 'error';
