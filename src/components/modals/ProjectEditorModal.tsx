@@ -498,17 +498,17 @@ export function ProjectEditorModal({
     return (
       <div className="col-span-full mt-1">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold text-[#3f5d7c]">
+          <h4 className="text-xs font-semibold text-[#17406e]">
             {kind === 'tor'
               ? 'คณะกรรมการจัดทำ TOR และราคากลาง'
               : 'รายชื่อคณะกรรมการตรวจรับ'}{' '}
-            <span className="font-mono-num text-[#6884a1]">({members.length} คน)</span>
+            <span className="font-mono-num text-[#3d6591]">({members.length} คน)</span>
           </h4>
           <button
             type="button"
             disabled={members.length >= 30}
             onClick={addMember}
-            className="whitespace-nowrap text-xs font-medium text-[#1575af] hover:underline disabled:opacity-45"
+            className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
           >
             {kind === 'tor' ? '＋ เพิ่มกรรมการ' : '＋ เพิ่มกรรมการตรวจรับ'}
           </button>
@@ -516,16 +516,16 @@ export function ProjectEditorModal({
 
         <div className="space-y-2.5">
           {members.length === 0 ? (
-            <p className="text-[11px] text-[#8da5bf]">
+            <p className="text-[11px] text-[#5c7899]">
               ยังไม่มีรายชื่อกรรมการ กด “เพิ่มกรรมการ” เพื่อเพิ่ม
             </p>
           ) : (
             members.map((m, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-1 items-center gap-2 rounded-xl border border-[#dbe7f4] bg-[#f6f9fe] p-3 md:grid-cols-[20px_minmax(0,1fr)_minmax(0,1fr)_175px_30px]"
+                className="grid grid-cols-1 items-center gap-2 rounded-xl border border-[#b4cde8] bg-[#edf4fc] p-3 md:grid-cols-[20px_minmax(0,1fr)_minmax(0,1fr)_175px_30px]"
               >
-                <span className="font-mono-num text-[11px] font-semibold text-[#8da5bf]">
+                <span className="font-mono-num text-[11px] font-semibold text-[#3d6591]">
                   {idx + 1}
                 </span>
 
@@ -542,7 +542,7 @@ export function ProjectEditorModal({
                       ),
                     )
                   }
-                  className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#2e4661]"
+                  className="min-h-[34px] w-full rounded-md border border-[#a8c4e4] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                 />
 
                 <AutoSuggestInput
@@ -558,7 +558,7 @@ export function ProjectEditorModal({
                       ),
                     )
                   }
-                  className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#2e4661]"
+                  className="min-h-[34px] w-full rounded-md border border-[#a8c4e4] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                 />
 
                 <select
@@ -573,7 +573,7 @@ export function ProjectEditorModal({
                       ),
                     )
                   }
-                  className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#2e4661]"
+                  className="min-h-[34px] w-full rounded-md border border-[#a8c4e4] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                 >
                   {COMMITTEE_ROLES.map((role) => (
                     <option key={role} value={role}>
@@ -588,7 +588,7 @@ export function ProjectEditorModal({
                   onClick={() =>
                     setMembers((list) => list.filter((_, i) => i !== idx))
                   }
-                  className="grid h-7 w-7 place-items-center rounded-md text-[#87a4c1] hover:bg-[#fff0f1] hover:text-[#b95b68]"
+                  className="grid h-7 w-7 place-items-center rounded-md text-[#54759b] hover:bg-[#ffeaea] hover:text-[#a82c2c]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -605,17 +605,17 @@ export function ProjectEditorModal({
     const inputId = `${category}AttachmentsInput`;
 
     return (
-      <div className="col-span-full border-b border-[#e4edf6] pt-1 pb-4">
+      <div className="col-span-full border-b border-[#cfe0f2] pt-1 pb-4">
         <label
           htmlFor={inputId}
-          className="block text-[11.5px] font-semibold text-[#425f7c]"
+          className="block text-[11.5px] font-semibold text-[#1d4069]"
         >
           {label}
         </label>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <label
             htmlFor={inputId}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9dcee] bg-[#f1f6fc] px-3 py-1.5 text-xs font-medium text-[#486a8b] hover:bg-[#e5effa]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#9fc0e6] bg-[#e6f0fc] px-3 py-1.5 text-xs font-semibold text-[#154b94] hover:bg-[#d6e7fa]"
           >
             <Upload className="h-3.5 w-3.5" />
             {isUploading ? 'กำลังอัปโหลด…' : 'เลือกไฟล์แนบ…'}
@@ -633,11 +633,11 @@ export function ProjectEditorModal({
             onChange={(e) => handleAddFiles(e, category)}
             className="sr-only"
           />
-          <span className="text-xs text-[#7c94ae] tabular-nums">
+          <span className="text-xs text-[#4b6a8d] tabular-nums">
             {files.length} ไฟล์แนบในหมวดนี้
           </span>
         </div>
-        <p className="mt-1.5 text-[10.5px] text-[#8da5bf]">
+        <p className="mt-1.5 text-[10.5px] text-[#5c7899]">
           {isGoogleSyncConfigured()
             ? 'อัปโหลดไฟล์ไปยัง Google Drive อัตโนมัติ (หรือเก็บในเครื่องไม่เกิน 2 MB หากออฟไลน์)'
             : 'ไฟล์ทุกหมวดรวมไม่เกิน 2 MB ต่อโครงการ · เก็บในเบราว์เซอร์นี้'}
@@ -648,16 +648,16 @@ export function ProjectEditorModal({
             {files.map((f) => (
               <div
                 key={f.id}
-                className="flex items-center justify-between gap-2 rounded-md border border-[#dce8f5] bg-white px-3 py-2 text-xs text-[#3b5571]"
+                className="flex items-center justify-between gap-2 rounded-md border border-[#b4cde8] bg-white px-3 py-2 text-xs text-[#153152]"
               >
                 <span className="flex min-w-0 items-center gap-2 truncate">
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-[#5282b8]" />
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-[#185bb5]" />
                   <span className="truncate">{f.name}</span>
-                  <span className="shrink-0 font-mono-num text-[11px] text-[#889bb0]">
+                  <span className="shrink-0 font-mono-num text-[11px] text-[#557191]">
                     · {(f.size / 1024).toFixed(0)} KB
                   </span>
                   {f.url && (
-                    <span className="shrink-0 rounded border border-[#bce5d2] bg-[#eaf8f2] px-1.5 py-0.5 text-[10px] font-medium text-[#177853]">
+                    <span className="shrink-0 rounded border border-[#9cd8bd] bg-[#dff5eb] px-1.5 py-0.5 text-[10px] font-semibold text-[#116947]">
                       Drive
                     </span>
                   )}
@@ -665,7 +665,7 @@ export function ProjectEditorModal({
                 <button
                   type="button"
                   onClick={() => handleRemoveFile(f.id)}
-                  className="shrink-0 rounded border border-[#dce6f2] px-2 py-0.5 text-[11px] text-[#9b4444] hover:bg-[#fff1f1]"
+                  className="shrink-0 rounded border border-[#edb8b8] px-2 py-0.5 text-[11px] font-medium text-[#a82c2c] hover:bg-[#ffebeb]"
                 >
                   นำออก
                 </button>
@@ -675,7 +675,7 @@ export function ProjectEditorModal({
         )}
 
         {uploadErrors[category] && (
-          <p role="alert" className="mt-2 text-xs text-[#be5454]">
+          <p role="alert" className="mt-2 text-xs text-[#b52c2c]">
             {uploadErrors[category]}
           </p>
         )}
@@ -688,18 +688,18 @@ export function ProjectEditorModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="editor-modal-title"
-      className="no-print fixed inset-0 z-40 flex items-center justify-center bg-[#142e4a]/50 p-3 backdrop-blur-[2px] sm:p-5"
+      className="no-print fixed inset-0 z-40 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[92dvh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[17px] border border-[#b8d6ef] bg-[#fbfdff] shadow-2xl">
-        <div className="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-[#124f9b] to-[#157bb9] px-6 py-5 text-white">
+      <div className="flex max-h-[92dvh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[17px] border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-6 py-5 text-white">
           <div className="min-w-0">
             <h2 id="editor-modal-title" className="text-lg font-bold sm:text-[21px]">
               {existing ? 'แก้ไขโครงการ' : 'บันทึกโครงการใหม่'}
             </h2>
-            <p className="mt-1 text-xs text-[#c3e4ff] tabular-nums">
+            <p className="mt-1 text-xs text-[#b8dcff] tabular-nums">
               รหัสโครงการ: {draft.code || 'ยังไม่ระบุ'} | ปีงบประมาณ พ.ศ. {draft.year}
             </p>
           </div>
@@ -717,7 +717,7 @@ export function ProjectEditorModal({
           <div
             role="tablist"
             aria-label="หมวดข้อมูลโครงการ"
-            className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#d8e7f4] bg-[#edf5fd] px-4 py-2.5"
+            className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#b8d0eb] bg-[#dceafa] px-4 py-2.5"
           >
             {PROJECT_TABS.map((tab, i) => {
               const Icon = TAB_ICONS[tab.id];
@@ -736,13 +736,13 @@ export function ProjectEditorModal({
                   onKeyDown={(e) => handleTabKeyDown(e, i)}
                   className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                     selected
-                      ? 'border-[#b9d7f0] bg-white text-[#1766af] shadow-xs'
-                      : 'border-transparent bg-transparent text-[#617f9e] hover:border-[#c2daef] hover:bg-[#e0edfb]'
+                      ? 'border-[#8cb5e4] bg-white text-[#0f489e] shadow-xs'
+                      : 'border-transparent bg-transparent text-[#2d5380] hover:border-[#a7c6e8] hover:bg-[#cde0f7]'
                   }`}
                 >
                   <Icon
                     className={`h-3.5 w-3.5 shrink-0 ${
-                      selected ? 'text-[#1688c9]' : 'text-[#83a5c6]'
+                      selected ? 'text-[#1360c2]' : 'text-[#4472a6]'
                     }`}
                   />
                   <span>
@@ -764,23 +764,23 @@ export function ProjectEditorModal({
                 role="tabpanel"
                 hidden={activeTab !== tab.id}
               >
-                <div className="mb-5 border-b border-[#e4edf6] pb-3.5">
-                  <h3 className="text-[14px] font-semibold text-[#2e4966]">
+                <div className="mb-5 border-b border-[#cfe0f2] pb-3.5">
+                  <h3 className="text-[14px] font-semibold text-[#113969]">
                     {idx + 1}. {tab.heading}
                   </h3>
-                  <p className="mt-1 text-xs text-[#7590ad]">{tab.description}</p>
+                  <p className="mt-1 text-xs text-[#4b6a8d]">{tab.description}</p>
                 </div>
 
                 {tab.id === 'general' && (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ปีงบประมาณ พ.ศ. *
                       <select
                         value={draft.year}
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, year: Number(e.target.value) }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       >
                         {getFiscalYearOptions(draft.year).map((y) => (
                           <option key={y} value={y}>
@@ -790,7 +790,7 @@ export function ProjectEditorModal({
                       </select>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       เลขทะเบียน *
                       <input
                         type="text"
@@ -800,11 +800,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, code: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ประเภทงาน *
                       <select
                         value={draft.type}
@@ -814,7 +814,7 @@ export function ProjectEditorModal({
                             type: e.target.value as ProjectType,
                           }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       >
                         {PROJECT_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -824,7 +824,7 @@ export function ProjectEditorModal({
                       </select>
                     </label>
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       ชื่อโครงการ *
                       <input
                         type="text"
@@ -835,11 +835,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, title: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วิธีจัดซื้อจัดจ้าง *
                       <div className="mt-1.5">
                         <AutoSuggestInput
@@ -850,12 +850,12 @@ export function ProjectEditorModal({
                           onChangeValue={(nextVal) =>
                             setDraft((p) => ({ ...p, method: nextVal }))
                           }
-                          className="min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                          className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                         />
                       </div>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       แหล่งงบประมาณ
                       <div className="mt-1.5">
                         <AutoSuggestInput
@@ -864,12 +864,12 @@ export function ProjectEditorModal({
                           onChangeValue={(nextVal) =>
                             setDraft((p) => ({ ...p, fund: nextVal }))
                           }
-                          className="min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                          className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                         />
                       </div>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วงเงินงบประมาณ (บาท) *
                       <input
                         type="number"
@@ -880,11 +880,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, budget: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ผู้รับผิดชอบ *
                       <div className="mt-1.5">
                         <AutoSuggestInput
@@ -899,12 +899,12 @@ export function ProjectEditorModal({
                               responsibleName: nextVal,
                             }))
                           }
-                          className="min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                          className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                         />
                       </div>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่ขออนุมัติ *
                       <input
                         type="date"
@@ -913,7 +913,7 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, start: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
@@ -921,7 +921,7 @@ export function ProjectEditorModal({
                       ชื่อผู้รับผิดชอบไม่เปลี่ยนบัญชีที่ได้รับงานในกล่องงานของฉัน
                     </p>
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       รายละเอียดโครงการ/รายการจัดซื้อจัดจ้าง
                       <textarea
                         rows={4}
@@ -930,7 +930,7 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, notes: e.target.value }))
                         }
-                        className="mt-1.5 w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] p-3 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
@@ -943,7 +943,7 @@ export function ProjectEditorModal({
 
                 {tab.id === 'tor' && (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       เลขที่คำสั่งแต่งตั้ง คกก. จัดทำ TOR/ราคากลาง
                       <input
                         type="text"
@@ -951,21 +951,21 @@ export function ProjectEditorModal({
                         placeholder="เช่น 142/2567"
                         value={draft.details.torOrderNo || ''}
                         onChange={(e) => updateDetail('torOrderNo', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่ออกคำสั่ง
                       <input
                         type="date"
                         value={draft.details.torOrderDate || ''}
                         onChange={(e) => updateDetail('torOrderDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่จัดทำ TOR และราคากลาง
                       <input
                         type="date"
@@ -973,11 +973,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           updateDetail('torPreparedDate', e.target.value)
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ราคากลาง (บาท)
                       <input
                         type="number"
@@ -988,7 +988,7 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, reference: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                       <span className="mt-1 block font-mono-num text-[11px] font-normal text-[#6f8ca9]">
                         {formatMoney(draft.reference)} บาท
@@ -1020,13 +1020,13 @@ export function ProjectEditorModal({
                     )}
 
                     {(draft.details.torNotes || existing?.projectDetails?.torNotes) && (
-                      <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                      <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                         รายละเอียด TOR / ขอบเขตงานเดิม
                         <textarea
                           rows={3}
                           value={draft.details.torNotes || ''}
                           onChange={(e) => updateDetail('torNotes', e.target.value)}
-                          className="mt-1.5 w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] p-3 text-xs font-normal text-[#2e4661]"
+                          className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
                         />
                       </label>
                     )}
@@ -1035,7 +1035,7 @@ export function ProjectEditorModal({
 
                 {tab.id === 'order' && (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       เลขที่ใบสั่งซื้อ / สั่งจ้าง (เอกสารหลัก)
                       <input
                         type="text"
@@ -1043,11 +1043,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, docNo: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่ใบสั่งซื้อ / สั่งจ้าง
                       <input
                         type="date"
@@ -1055,11 +1055,11 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, docDate: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       ผู้ขาย / ผู้รับจ้าง
                       <div className="mt-1.5">
                         <AutoSuggestInput
@@ -1068,12 +1068,12 @@ export function ProjectEditorModal({
                           onChangeValue={(nextVal) =>
                             setDraft((p) => ({ ...p, vendor: nextVal }))
                           }
-                          className="min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                          className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                         />
                       </div>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วงเงินตกลงซื้อ / จ้าง (บาท)
                       <input
                         type="number"
@@ -1083,27 +1083,27 @@ export function ProjectEditorModal({
                         onChange={(e) =>
                           setDraft((p) => ({ ...p, agreed: e.target.value }))
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       กำหนดส่งมอบ
                       <input
                         type="date"
                         value={draft.details.deliveryDue || ''}
                         onChange={(e) => updateDetail('deliveryDue', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       รายละเอียดการสั่งซื้อ / สั่งจ้าง
                       <textarea
                         rows={4}
                         value={draft.details.orderNotes || ''}
                         onChange={(e) => updateDetail('orderNotes', e.target.value)}
-                        className="mt-1.5 w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] p-3 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
@@ -1116,7 +1116,7 @@ export function ProjectEditorModal({
 
                 {tab.id === 'acceptance' && (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       เลขที่คำสั่งแต่งตั้ง
                       <input
                         type="text"
@@ -1124,17 +1124,17 @@ export function ProjectEditorModal({
                         placeholder="เช่น 185/2567"
                         value={draft.details.committeeNo || ''}
                         onChange={(e) => updateDetail('committeeNo', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่ออกคำสั่ง
                       <input
                         type="date"
                         value={draft.details.committeeDate || ''}
                         onChange={(e) => updateDetail('committeeDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
@@ -1145,14 +1145,14 @@ export function ProjectEditorModal({
                       'ไฟล์แนบคำสั่งแต่งตั้งคณะกรรมการตรวจรับ (PDF, Excel, Word)',
                     )}
 
-                    <div className="col-span-full rounded-2xl border border-[#dbe7f3] bg-[#f6f9fe] p-4">
+                    <div className="col-span-full rounded-2xl border border-[#b4cde8] bg-[#edf4fc] p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
-                        <h4 className="flex items-center gap-2 text-xs font-semibold text-[#3f5d7c]">
-                          <span className="grid h-6 w-6 place-items-center rounded-md bg-[#2480bc] text-white">
+                        <h4 className="flex items-center gap-2 text-xs font-semibold text-[#17406e]">
+                          <span className="grid h-6 w-6 place-items-center rounded-md bg-[#0f4ca6] text-white">
                             ✓
                           </span>
                           ผลการตรวจรับ{' '}
-                          <span className="font-mono-num text-[#6884a1]">
+                          <span className="font-mono-num text-[#3d6591]">
                             ({draft.acceptanceRounds.length} ครั้ง)
                           </span>
                         </h4>
@@ -1179,14 +1179,14 @@ export function ProjectEditorModal({
                               ],
                             }))
                           }
-                          className="whitespace-nowrap text-xs font-medium text-[#1575af] hover:underline disabled:opacity-45"
+                          className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
                         >
                           ＋ เพิ่มการตรวจรับ
                         </button>
                       </div>
 
                       {draft.acceptanceRounds.length === 0 ? (
-                        <p className="text-[11px] text-[#8da5bf]">
+                        <p className="text-[11px] text-[#5c7899]">
                           ยังไม่มีผลการตรวจรับ กด “เพิ่มการตรวจรับ” เพื่อเพิ่ม
                         </p>
                       ) : (
@@ -1194,7 +1194,7 @@ export function ProjectEditorModal({
                           {draft.acceptanceRounds.map((roundItem, rIdx) => (
                             <div
                               key={rIdx}
-                              className="relative rounded-xl border border-[#d8e5f3] bg-white p-3.5 pr-9"
+                              className="relative rounded-xl border border-[#aec7e4] bg-white p-3.5 pr-9"
                             >
                               <button
                                 type="button"
@@ -1235,7 +1235,7 @@ export function ProjectEditorModal({
                                         ),
                                       }))
                                     }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2e4661]"
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
                                   />
                                 </label>
 
@@ -1255,7 +1255,7 @@ export function ProjectEditorModal({
                                         ),
                                       }))
                                     }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2e4661]"
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
                                   />
                                 </label>
 
@@ -1278,7 +1278,7 @@ export function ProjectEditorModal({
                                         ),
                                       }))
                                     }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#2e4661]"
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                                   >
                                     <option value="">เลือกผลการตรวจรับ</option>
                                     {ACCEPTANCE_RESULTS.map((res) => (
@@ -1309,7 +1309,7 @@ export function ProjectEditorModal({
                                         ),
                                       }))
                                     }
-                                    className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#2e4661]"
+                                    className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                                   />
                                 </label>
                               </div>
@@ -1320,13 +1320,13 @@ export function ProjectEditorModal({
                     </div>
 
                     {draft.details.acceptanceNo && (
-                      <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                      <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                         เลขที่เอกสารตรวจรับเดิม
                         <input
                           type="text"
                           value={draft.details.acceptanceNo}
                           onChange={(e) => updateDetail('acceptanceNo', e.target.value)}
-                          className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                          className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                         />
                       </label>
                     )}
@@ -1335,27 +1335,27 @@ export function ProjectEditorModal({
 
                 {tab.id === 'voucher' && (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       เลขที่ฎีกา
                       <input
                         type="text"
                         value={draft.details.voucherNo || ''}
                         onChange={(e) => updateDetail('voucherNo', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่ฎีกา
                       <input
                         type="date"
                         value={draft.details.voucherDate || ''}
                         onChange={(e) => updateDetail('voucherDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       จำนวนเงินตามฎีกา (บาท)
                       <input
                         type="number"
@@ -1368,27 +1368,27 @@ export function ProjectEditorModal({
                             e.target.value === '' ? '' : Number(e.target.value),
                           )
                         }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       วันที่เบิกจ่าย
                       <input
                         type="date"
                         value={draft.details.paymentDate || ''}
                         onChange={(e) => updateDetail('paymentDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] px-3 py-2 font-mono-num text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#425f7c]">
+                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       รายละเอียดฎีกา / หมายเหตุ
                       <textarea
                         rows={4}
                         value={draft.details.voucherNotes || ''}
                         onChange={(e) => updateDetail('voucherNotes', e.target.value)}
-                        className="mt-1.5 w-full rounded-[10px] border border-[#c6d9ec] bg-[#f7f9fd] p-3 text-xs font-normal text-[#2e4661]"
+                        className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
 
@@ -1405,7 +1405,7 @@ export function ProjectEditorModal({
               </section>
             ))}
 
-            <p className="mt-6 border-t border-[#e4edf6] pt-4 text-[11px] leading-relaxed text-[#8da0b5]">
+            <p className="mt-6 border-t border-[#cfe0f2] pt-4 text-[11px] leading-relaxed text-[#547091]">
               * ฟิลด์บังคับอยู่ในข้อมูลทั่วไป · ทุกแท็บบันทึกพร้อมกัน ·
               หมวดเอกสารนี้แยกจากขั้นตอนดำเนินงาน
             </p>
@@ -1413,17 +1413,17 @@ export function ProjectEditorModal({
             {formError && (
               <div
                 role="alert"
-                className="mt-4 whitespace-pre-line rounded-md border border-[#f5c7c7] bg-[#fff2f2] p-3 text-xs text-[#be5454]"
+                className="mt-4 whitespace-pre-line rounded-md border border-[#edb0b0] bg-[#ffeaea] p-3 text-xs font-medium text-[#a32c2c]"
               >
                 {formError}
               </div>
             )}
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#dce6f1] bg-white px-6 py-4">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#bdd3ec] bg-[#eef5fd] px-6 py-4">
             <span
               aria-live="polite"
-              className="text-xs font-medium text-[#718aaa] tabular-nums"
+              className="text-xs font-semibold text-[#2d5380] tabular-nums"
             >
               หมวดที่ {activeIndex + 1} จาก {PROJECT_TABS.length}
             </span>
@@ -1432,7 +1432,7 @@ export function ProjectEditorModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#cad7e8] bg-white px-4 py-1.5 text-xs font-semibold text-[#40516b] hover:bg-[#f6f9fd]"
+                className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#9fc0e6] bg-white px-4 py-1.5 text-xs font-semibold text-[#1b416e] hover:bg-[#dfecfc]"
               >
                 ยกเลิก
               </button>
@@ -1441,7 +1441,7 @@ export function ProjectEditorModal({
                 <button
                   type="button"
                   onClick={() => setActiveTab(PROJECT_TABS[activeIndex + 1].id)}
-                  className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#202d43] bg-[#202d43] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#32435e]"
+                  className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#0f3463] bg-[#0f3463] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#174888]"
                 >
                   ถัดไป (หมวดที่ {activeIndex + 2})
                 </button>
@@ -1450,7 +1450,7 @@ export function ProjectEditorModal({
               <button
                 type="submit"
                 disabled={isUploading}
-                className="inline-flex min-h-[36px] items-center gap-2 whitespace-nowrap rounded-xl border border-[#008666] bg-[#008666] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#006e53] disabled:opacity-50"
+                className="inline-flex min-h-[36px] items-center gap-2 whitespace-nowrap rounded-xl border border-[#0b7055] bg-[#0c7a5c] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#085c45] disabled:opacity-50"
               >
                 <Save className="h-3.5 w-3.5" />
                 บันทึกข้อมูลโครงการ

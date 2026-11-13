@@ -11,9 +11,7 @@ export type PageId =
   | 'inbox'
   | 'register'
   | 'overdue'
-  | 'excel'
-  | 'workflow'
-  | 'guide';
+  | 'excel';
 
 export type ProjectTabId =
   | 'general'
@@ -43,27 +41,12 @@ export type AcceptanceResult =
 
 export type AttachmentCategory = 'general' | 'tor' | 'order' | 'acceptance' | 'voucher';
 
-export type WorkflowRequiredField =
-  | 'title'
-  | 'department'
-  | 'method'
-  | 'fund'
-  | 'budget'
-  | 'reference'
-  | 'agreed'
-  | 'vendor'
-  | 'docNo'
-  | 'docDate'
-  | 'due'
-  | 'start'
-  | 'assignee';
-
 export interface WorkflowStep {
   id: string;
   name: string;
   next: string[];
   roles: UserRole[];
-  required: WorkflowRequiredField[];
+  required: Array<keyof ProjectRecord>;
   condition?: string;
   documents?: string[];
 }
@@ -224,7 +207,6 @@ export interface ImportPlan {
   years: Record<number, number>;
   totalRows: number;
   targetYear: string;
-  workflowSnapshot: string;
 }
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'local' | 'error';

@@ -6,7 +6,6 @@ import {
   STATUSES,
   TERMINAL_STATUSES,
   USERS,
-  WORKFLOW_REQUIRED_FIELDS,
 } from '../data/constants';
 import type {
   AcceptanceRound,
@@ -18,7 +17,6 @@ import type {
   SortDirection,
   SortKey,
   UserAccount,
-  WorkflowRequiredField,
   WorkflowStep,
 } from '../types/procurement';
 import { isValidIsoDate, todayBangkok } from '../utils/date';
@@ -323,53 +321,4 @@ export function createAcceptanceDraft(details: ProjectDetails = {}): {
     members: structuredClone(members),
     rounds: structuredClone(rounds),
   };
-}
-
-export function validateWorkflowSteps(
-  rawJson: string,
-  existingRows: ProjectRecord[],
-): WorkflowStep[] {
-  const steps: unknown = JSON.parse(rawJson);
-  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 30) {
-    throw new Error('ต้องมี 1–30 ขั้นตอน');
-  }
-
-  const typedSteps = steps as WorkflowStep[];
-  const ids = typedSteps.map((s) => s.id);
-  if (new Set(ids).size !== ids.length) {
-    throw new Error('id ขั้นตอนซ้ำ');
-  }
-
-  for (const s of typedSteps) {
-    if (
-      !/^[a-zA-Z0-9_-]+$/.test(String(s.id || '')) ||
-      !s.name?.trim() ||
-      !Array.isArray(s.next) ||
-      !Array.isArray(s.roles) ||
-      !Array.isArray(s.required)
-    ) {
-      throw new Error('โครงสร้างแต่ละขั้นตอนไม่ครบ');
-    }
-    if (s.next.some((id) => !ids.includes(id))) {
-      throw new Error('next อ้างถึงขั้นตอนที่ไม่มี');
-    }
-    if (s.roles.some((r) => r !== 'admin')) {
-      throw new Error('บทบาทไม่ถูกต้อง');
-    }
-    if (
-      s.required.some(
-        (k) => !WORKFLOW_REQUIRED_FIELDS.includes(k as WorkflowRequiredField),
-      )
-    ) {
-      throw new Error('required มีฟิลด์ที่ไม่รองรับ');
-    }
-  }
-
-  for (const r of existingRows) {
-    if (!ids.includes(r.step) || Object.keys(r.stageData || {}).some((id) => !ids.includes(id))) {
-      throw new Error('มีโครงการหรือประวัติขั้นตอนอ้างอิง id ที่ถูกลบ');
-    }
-  }
-
-  return typedSteps;
 }

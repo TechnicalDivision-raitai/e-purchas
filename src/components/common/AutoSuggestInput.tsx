@@ -142,7 +142,7 @@ export function AutoSuggestInput({
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute right-0 left-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#c6d9ec] bg-white py-1 shadow-lg"
+          className="absolute right-0 left-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#9ec0e6] bg-white py-1 shadow-lg"
         >
           {matched.map((item, idx) => {
             const active = idx === highlightedIndex;
@@ -159,8 +159,8 @@ export function AutoSuggestInput({
                 title={item}
                 className={`cursor-pointer px-3 py-2 text-xs whitespace-nowrap truncate ${
                   active
-                    ? 'bg-[#edf5fd] font-medium text-[#1762ce]'
-                    : 'text-[#2e4661] hover:bg-[#f4f8fd]'
+                    ? 'bg-[#dcebfa] font-semibold text-[#0f489e]'
+                    : 'text-[#1c395c] hover:bg-[#edf5fd]'
                 }`}
               >
                 {item}

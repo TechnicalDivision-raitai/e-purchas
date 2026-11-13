@@ -252,22 +252,22 @@ export function ProjectViewModal({
   const renderReportTable = (
     rows: Array<[string, string | number | undefined | null, 'money'?]>,
   ) => (
-    <div className="print-avoid-break mb-3 overflow-hidden rounded-xl border border-[#cbddef] bg-white">
+    <div className="print-avoid-break mb-3 overflow-hidden rounded-xl border border-[#adc7e4] bg-white">
       <table className="w-full table-fixed border-collapse text-xs">
         <tbody>
           {rows.map(([label, val, kind]) => (
-            <tr key={label} className="border-b border-[#e1eaf5] last:border-b-0">
+            <tr key={label} className="border-b border-[#d4e3f3] last:border-b-0">
               <th
                 scope="row"
-                className="w-[34%] border-r border-[#e1eaf5] bg-[#f5f8fc] px-3 py-2.5 text-left align-top font-semibold text-[#4d6582] break-words"
+                className="w-[34%] border-r border-[#d4e3f3] bg-[#e9f2fc] px-3 py-2.5 text-left align-top font-semibold text-[#1e4675] break-words"
               >
                 {label}
               </th>
               <td
                 className={`px-3 py-2.5 align-top whitespace-pre-wrap break-words ${
                   kind === 'money'
-                    ? 'font-mono-num text-[13px] font-bold text-[#176fa4]'
-                    : 'text-[#2f435d]'
+                    ? 'font-mono-num text-[13px] font-bold text-[#0f4ca6]'
+                    : 'text-[#153152]'
                 }`}
               >
                 {val == null || val === '' ? '—' : val}
@@ -283,7 +283,7 @@ export function ProjectViewModal({
     const valid = members.filter((m) => String(m.name || '').trim());
     return (
       <div>
-        <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#47698f]">{title}</h4>
+        <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#17467d]">{title}</h4>
         {valid.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {valid.map((m, i) => (
@@ -298,7 +298,7 @@ export function ProjectViewModal({
             ))}
           </div>
         ) : (
-          <p className="rounded-lg bg-[#f7fafd] p-3.5 text-xs text-[#8da0b4]">
+          <p className="rounded-lg border border-[#d6e4f3] bg-[#f0f6fd] p-3.5 text-xs text-[#547396]">
             ยังไม่มีรายชื่อกรรมการ
           </p>
         )}
@@ -312,9 +312,9 @@ export function ProjectViewModal({
     );
     return (
       <div>
-        <h4 className="mt-5 mb-2.5 flex items-center gap-2 text-xs font-semibold text-[#47698f]">
+        <h4 className="mt-5 mb-2.5 flex items-center gap-2 text-xs font-semibold text-[#17467d]">
           <span>เอกสารแนบ</span>
-          <span className="rounded border border-[#dce5f0] bg-[#f1f5fa] px-2 py-0.5 font-mono-num text-[11px] font-medium text-[#5b718c]">
+          <span className="rounded border border-[#a9c5e6] bg-[#e9f2fc] px-2 py-0.5 font-mono-num text-[11px] font-semibold text-[#164b91]">
             {files.length} ไฟล์
           </span>
         </h4>
@@ -324,12 +324,12 @@ export function ProjectViewModal({
             {files.map((f) => (
               <div
                 key={f.id}
-                className="print-avoid-break flex items-center justify-between gap-2 rounded-lg border border-[#dce8f5] bg-white px-3 py-2 text-xs text-[#2f4865]"
+                className="print-avoid-break flex items-center justify-between gap-2 rounded-lg border border-[#b4cde8] bg-white px-3 py-2 text-xs text-[#153152]"
               >
                 <span className="flex min-w-0 items-center gap-2 truncate">
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-[#5282b8]" />
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-[#185bb5]" />
                   <span className="truncate">{f.name}</span>
-                  <span className="shrink-0 font-mono-num text-[11px] text-[#8396ac]">
+                  <span className="shrink-0 font-mono-num text-[11px] text-[#557191]">
                     · {(f.size / 1024).toFixed(0)} KB
                   </span>
                 </span>
@@ -339,7 +339,7 @@ export function ProjectViewModal({
                     href={f.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="no-print inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#d4e2f0] bg-white px-2.5 py-1 text-[11px] font-medium text-[#1b5ec2] hover:bg-[#eef5fd]"
+                    className="no-print inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#9fc0e6] bg-[#edf4fc] px-2.5 py-1 text-[11px] font-semibold text-[#10499c] hover:bg-[#dcebfa]"
                   >
                     <ExternalLink className="h-3 w-3" />
                     เปิดไฟล์ Drive
@@ -348,7 +348,7 @@ export function ProjectViewModal({
                   <button
                     type="button"
                     onClick={() => triggerDownloadUrl(f.data!, f.name)}
-                    className="no-print inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#d4e2f0] bg-white px-2.5 py-1 text-[11px] font-medium text-[#1b5ec2] hover:bg-[#eef5fd]"
+                    className="no-print inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#9fc0e6] bg-[#edf4fc] px-2.5 py-1 text-[11px] font-semibold text-[#10499c] hover:bg-[#dcebfa]"
                   >
                     <Download className="h-3 w-3" />
                     ดาวน์โหลด
@@ -358,7 +358,7 @@ export function ProjectViewModal({
             ))}
           </div>
         ) : (
-          <p className="rounded-lg bg-[#f7fafd] p-3.5 text-xs text-[#8da0b4]">
+          <p className="rounded-lg border border-[#d6e4f3] bg-[#f0f6fd] p-3.5 text-xs text-[#547396]">
             ยังไม่มีเอกสารแนบในหมวดนี้
           </p>
         )}
@@ -371,13 +371,13 @@ export function ProjectViewModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="view-modal-title"
-      className="print-only-expand fixed inset-0 z-40 flex items-center justify-center bg-[#142e4a]/50 p-3 backdrop-blur-[2px] sm:p-5"
+      className="print-only-expand fixed inset-0 z-40 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="print-only-expand flex max-h-[92dvh] w-full max-w-[1100px] flex-col overflow-hidden rounded-[17px] border border-[#b8d6ef] bg-white shadow-2xl">
-        <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-[#124f9b] to-[#157bb9] px-6 py-5 text-white">
+      <div className="print-only-expand flex max-h-[92dvh] w-full max-w-[1100px] flex-col overflow-hidden rounded-[17px] border border-[#2b6cb5] bg-white shadow-2xl">
+        <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-6 py-5 text-white">
           <div className="min-w-0 flex-1">
             <h2
               id="view-modal-title"
@@ -385,7 +385,7 @@ export function ProjectViewModal({
             >
               {project.title}
             </h2>
-            <p className="mt-1 text-xs text-[#c3e4ff] tabular-nums">
+            <p className="mt-1 text-xs text-[#b8dcff] tabular-nums">
               เลขทะเบียน {project.code} | ปีงบประมาณ พ.ศ. {project.year}
             </p>
           </div>
@@ -413,7 +413,7 @@ export function ProjectViewModal({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-white/25 bg-[#b93838]/75 px-3 py-1.5 text-xs font-medium text-white hover:bg-[#b93838]"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-white/25 bg-[#b82828]/85 px-3 py-1.5 text-xs font-medium text-white hover:bg-[#a61f1f]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   ลบ
@@ -435,7 +435,7 @@ export function ProjectViewModal({
         <div
           role="tablist"
           aria-label="หมวดรายละเอียดโครงการ"
-          className="no-print flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#d8e7f4] bg-[#edf5fd] px-4 py-2.5"
+          className="no-print flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#b8d0eb] bg-[#dceafa] px-4 py-2.5"
         >
           {PROJECT_TABS.map((tab, i) => {
             const Icon = TAB_ICONS[tab.id];
@@ -454,13 +454,13 @@ export function ProjectViewModal({
                 onKeyDown={(e) => handleTabKeyDown(e, i)}
                 className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                   selected
-                    ? 'border-[#b9d7f0] bg-white text-[#1766af] shadow-xs'
-                    : 'border-transparent bg-transparent text-[#617f9e] hover:border-[#c2daef] hover:bg-[#e0edfb]'
+                    ? 'border-[#8cb5e4] bg-white text-[#0f489e] shadow-xs'
+                    : 'border-transparent bg-transparent text-[#2d5380] hover:border-[#a7c6e8] hover:bg-[#cde0f7]'
                 }`}
               >
                 <Icon
                   className={`h-3.5 w-3.5 shrink-0 ${
-                    selected ? 'text-[#1688c9]' : 'text-[#83a5c6]'
+                    selected ? 'text-[#1360c2]' : 'text-[#4472a6]'
                   }`}
                 />
                 <span>
@@ -473,15 +473,15 @@ export function ProjectViewModal({
 
         <div className="print-only-expand min-h-0 flex-1 overflow-y-auto bg-white">
           <div className="p-6">
-            <div className="mb-5 border-b-2 border-[#2b4664] pb-5 text-center">
-              <p className="mb-2 text-xs text-[#778ca5]">
+            <div className="mb-5 border-b-2 border-[#0f3463] pb-5 text-center">
+              <p className="mb-2 text-xs text-[#4b6a8e]">
                 รายละเอียดและติดตามงานจัดซื้อจัดจ้าง · กองช่าง อบต.ไร่ใต้
               </p>
-              <h2 className="mb-2 text-xl font-bold leading-snug text-[#20334c] break-words sm:text-[22px]">
+              <h2 className="mb-2 text-xl font-bold leading-snug text-[#0f2a4a] break-words sm:text-[22px]">
                 {project.title}
               </h2>
-              <div className="text-xs text-[#69809b] tabular-nums">
-                เลขทะเบียน {project.code} <span className="mx-2 text-[#a2b0c0]">·</span>{' '}
+              <div className="text-xs text-[#3b5d85] tabular-nums">
+                เลขทะเบียน {project.code} <span className="mx-2 text-[#8ba6c4]">·</span>{' '}
                 ปีงบประมาณ พ.ศ. {project.year}
               </div>
             </div>
@@ -492,7 +492,7 @@ export function ProjectViewModal({
                 hidden={activeTab !== tab.id}
                 className="print-panel"
               >
-                <h3 className="print-heading mb-3 rounded-lg border border-[#cfe3f7] bg-[#edf6ff] px-3.5 py-2.5 text-[13px] font-semibold text-[#28639c]">
+                <h3 className="print-heading mb-3 rounded-lg border border-[#a5c5ea] bg-[#dfecfa] px-3.5 py-2.5 text-[13px] font-semibold text-[#113d75]">
                   {idx + 1}. {tab.label}
                 </h3>
 
@@ -638,26 +638,26 @@ export function ProjectViewModal({
             ))}
           </div>
 
-          <div className="no-print mx-6 border-t border-[#e4edf6] py-5">
+          <div className="no-print mx-6 border-t border-[#c9dcf0] py-5">
             <details>
-              <summary className="cursor-pointer text-xs font-semibold text-[#315d8f]">
+              <summary className="cursor-pointer text-xs font-semibold text-[#12427d]">
                 การดำเนินงานและประวัติ
               </summary>
 
               <div className="mt-4 space-y-5">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <StatusBadge status={project.status} />
-                  <span className="rounded border border-[#dce5f0] bg-[#f1f5fa] px-2 py-0.5 text-[11px] font-medium text-[#546d87]">
+                  <span className="rounded border border-[#adc7e4] bg-[#e9f2fc] px-2 py-0.5 text-[11px] font-semibold text-[#1e4675]">
                     {getStepName(state.steps, project.step)}
                   </span>
-                  <span className="text-[11px] text-[#7c90a6]">
+                  <span className="text-[11px] text-[#4c6a8d]">
                     บัญชีกล่องงาน: {getUserName(project.assignee)} ·{' '}
                     {project.ack ? 'รับทราบแล้ว' : 'รอรับทราบ'}
                   </span>
                 </div>
 
                 <div>
-                  <div className="mb-2 border-b border-[#e4edf6] pb-1.5 text-xs font-semibold text-[#3d6392]">
+                  <div className="mb-2 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
                     กระบวนการดำเนินงาน
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -666,8 +666,8 @@ export function ProjectViewModal({
                         key={s.id}
                         className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${
                           project.step === s.id
-                            ? 'border-[#b9d7f0] bg-[#e3efff] text-[#1762ce]'
-                            : 'border-[#e4edf6] bg-[#f4f7fb] text-[#637c96]'
+                            ? 'border-[#8ab5e4] bg-[#dcebfa] font-semibold text-[#0f489e]'
+                            : 'border-[#cfe0f2] bg-[#f1f6fd] text-[#3c5e85]'
                         }`}
                       >
                         {s.name}
@@ -677,16 +677,16 @@ export function ProjectViewModal({
                 </div>
 
                 {editable && (
-                  <div className="space-y-3 rounded-xl border border-[#dce8f5] bg-[#f8fbff] p-4">
+                  <div className="space-y-3 rounded-xl border border-[#acc8e8] bg-[#edf4fc] p-4">
                     <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         สถานะงาน
                         <select
                           value={nextStatus}
                           onChange={(e) =>
                             setNextStatus(e.target.value as ProjectStatus)
                           }
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
                         >
                           {STATUSES.map((st) => (
                             <option key={st} value={st}>
@@ -696,12 +696,12 @@ export function ProjectViewModal({
                         </select>
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         ขั้นตอนถัดไป / ส่งกลับ
                         <select
                           value={nextStep}
                           onChange={(e) => setNextStep(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
                         >
                           {allowedNextSteps.map((s) => (
                             <option key={s.id} value={s.id}>
@@ -711,74 +711,74 @@ export function ProjectViewModal({
                         </select>
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         เลขที่เอกสารของขั้นตอนปัจจุบัน
                         <input
                           type="text"
                           value={stageDocNo}
                           onChange={(e) => setStageDocNo(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
                         />
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         วันที่เอกสารขั้นตอนปัจจุบัน
                         <input
                           type="date"
                           value={stageDocDate}
                           onChange={(e) => setStageDocDate(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
                         />
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         วันเริ่มขั้นตอน
                         <input
                           type="date"
                           value={stageStart}
                           onChange={(e) => setStageStart(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
                         />
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         กำหนดเสร็จขั้นตอน
                         <input
                           type="date"
                           value={stageDue}
                           onChange={(e) => setStageDue(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
                         />
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         วันเสร็จจริงของขั้นตอน
                         <input
                           type="date"
                           value={stageFinished}
                           onChange={(e) => setStageFinished(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
                         />
                       </label>
 
-                      <label className="block text-[11px] font-medium text-[#526d8a]">
+                      <label className="block text-[11px] font-semibold text-[#23446b]">
                         เหตุผล / บันทึกการดำเนินงาน
                         <input
                           type="text"
                           value={reason}
                           onChange={(e) => setReason(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#d6e2ef] bg-white px-2.5 py-1.5 text-xs text-[#2d445f]"
+                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
                         />
                       </label>
                     </div>
 
-                    <p className="text-[11px] text-[#7c90a6]">
+                    <p className="text-[11px] text-[#45668c]">
                       เอกสารและวันที่ด้านบนบันทึกให้ขั้นตอนปัจจุบันก่อนเปลี่ยนไปขั้นตอนถัดไป
                       การส่งกลับและยกเลิกต้องระบุเหตุผล
                     </p>
 
                     {transitionError && (
-                      <p role="alert" className="text-xs font-medium text-[#be5454]">
+                      <p role="alert" className="text-xs font-medium text-[#b52c2c]">
                         {transitionError}
                       </p>
                     )}
@@ -786,7 +786,7 @@ export function ProjectViewModal({
                     <button
                       type="button"
                       onClick={handleTransition}
-                      className="whitespace-nowrap rounded-lg bg-[#1762ce] px-4 py-2 text-xs font-medium text-white hover:bg-[#124ea8]"
+                      className="whitespace-nowrap rounded-lg bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-[#0b387d] hover:to-[#135ba4]"
                     >
                       บันทึกสถานะ / ขั้นตอน
                     </button>
@@ -794,14 +794,14 @@ export function ProjectViewModal({
                 )}
 
                 <div>
-                  <div className="mb-2.5 border-b border-[#e4edf6] pb-1.5 text-xs font-semibold text-[#3d6392]">
+                  <div className="mb-2.5 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
                     ข้อมูลแต่ละขั้นตอนที่บันทึกไว้
                   </div>
                   {Object.keys(project.stageData || {}).length > 0 ? (
-                    <div className="space-y-2.5 text-xs text-[#546d87]">
+                    <div className="space-y-2.5 text-xs text-[#314e70]">
                       {Object.entries(project.stageData).map(([stepId, v]) => (
-                        <div key={stepId} className="rounded-md bg-[#f8fbff] p-2.5">
-                          <div className="font-semibold text-[#2c4a6b]">
+                        <div key={stepId} className="rounded-md border border-[#cfe0f2] bg-[#f1f6fd] p-2.5">
+                          <div className="font-semibold text-[#113969]">
                             {getStepName(state.steps, stepId)}
                           </div>
                           <div className="mt-1 text-[11px]">
@@ -816,21 +816,21 @@ export function ProjectViewModal({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-[#8898aa]">
+                    <p className="text-xs text-[#597494]">
                       ยังไม่มีข้อมูลขั้นตอนเพิ่มเติม
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <div className="mb-2.5 border-b border-[#e4edf6] pb-1.5 text-xs font-semibold text-[#3d6392]">
+                  <div className="mb-2.5 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
                     ประวัติการดำเนินงาน
                   </div>
-                  <div className="space-y-3 border-l-2 border-[#d8e5f5] pl-4">
+                  <div className="space-y-3 border-l-2 border-[#a7c6e8] pl-4">
                     {[...(project.history || [])].reverse().map((h, i) => (
                       <div key={i} className="text-xs">
-                        <p className="text-[#2f455e]">{h.action}</p>
-                        <small className="text-[11px] text-[#8396ac]">
+                        <p className="text-[#153152]">{h.action}</p>
+                        <small className="text-[11px] text-[#557191]">
                           {h.by} · {formatThaiDateTime(h.at)}
                         </small>
                       </div>
@@ -842,8 +842,8 @@ export function ProjectViewModal({
           </div>
         </div>
 
-        <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#dce6f1] bg-white px-6 py-4">
-          <span className="text-xs font-medium text-[#718aaa] tabular-nums">
+        <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#bdd3ec] bg-[#eef5fd] px-6 py-4">
+          <span className="text-xs font-semibold text-[#2d5380] tabular-nums">
             หมวดที่ {activeIndex + 1} จาก {PROJECT_TABS.length}
           </span>
 
@@ -851,7 +851,7 @@ export function ProjectViewModal({
             <button
               type="button"
               onClick={onClose}
-              className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#cad7e8] bg-white px-4 py-1.5 text-xs font-semibold text-[#40516b] hover:bg-[#f6f9fd]"
+              className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#9fc0e6] bg-white px-4 py-1.5 text-xs font-semibold text-[#1b416e] hover:bg-[#dfecfc]"
             >
               ปิด
             </button>
@@ -860,7 +860,7 @@ export function ProjectViewModal({
               <button
                 type="button"
                 onClick={handleAcknowledge}
-                className="inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-[#bce5d2] bg-[#eaf8f2] px-4 py-1.5 text-xs font-semibold text-[#177853] hover:bg-[#daf3e7]"
+                className="inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-[#9cd8bd] bg-[#dff5eb] px-4 py-1.5 text-xs font-semibold text-[#116947] hover:bg-[#cdeedf]"
               >
                 <Check className="h-3.5 w-3.5" />
                 รับทราบงาน
@@ -871,7 +871,7 @@ export function ProjectViewModal({
               <button
                 type="button"
                 onClick={() => setActiveTab(PROJECT_TABS[activeIndex + 1].id)}
-                className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#202d43] bg-[#202d43] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#32435e]"
+                className="min-h-[36px] whitespace-nowrap rounded-xl border border-[#0f3463] bg-[#0f3463] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#174888]"
               >
                 ถัดไป (หมวดที่ {activeIndex + 2})
               </button>
@@ -885,16 +885,16 @@ export function ProjectViewModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="view-delete-confirm-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#142e4a]/50 p-4"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/75 p-4"
         >
-          <div className="w-full max-w-[400px] rounded-xl border border-[#dce8f5] bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-[400px] rounded-xl border border-[#9fc0e6] bg-white p-5 shadow-2xl">
             <h3
               id="view-delete-confirm-title"
-              className="text-sm font-bold text-[#1e3550]"
+              className="text-sm font-bold text-[#0f2a4a]"
             >
               ยืนยันการลบโครงการ
             </h3>
-            <p className="mt-2 text-xs leading-relaxed text-[#546d87]">
+            <p className="mt-2 text-xs leading-relaxed text-[#365375]">
               ต้องการลบโครงการ <b className="font-mono-num">{project.code}</b> (
               {project.title}) ออกจากระบบหรือไม่?
             </p>
@@ -902,14 +902,14 @@ export function ProjectViewModal({
               <button
                 type="button"
                 onClick={() => setConfirmDeleteOpen(false)}
-                className="rounded-lg border border-[#cad7e8] bg-white px-3.5 py-1.5 text-xs font-medium text-[#40516b] hover:bg-[#f6f9fd]"
+                className="rounded-lg border border-[#afc8e4] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#274469] hover:bg-[#edf4fc]"
               >
                 ยกเลิก
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
-                className="rounded-lg bg-[#c53939] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#a62d2d]"
+                className="rounded-lg bg-[#b82828] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#961d1d]"
               >
                 ยืนยันลบโครงการ
               </button>

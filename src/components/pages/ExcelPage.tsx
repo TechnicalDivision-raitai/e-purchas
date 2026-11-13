@@ -85,7 +85,6 @@ export function ExcelPage() {
       setImportPlan({
         ...preview,
         targetYear: importYear,
-        workflowSnapshot: JSON.stringify(state.steps),
       });
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
@@ -106,11 +105,8 @@ export function ExcelPage() {
   const handleConfirmImport = () => {
     if (!importPlan || !canWrite) return;
 
-    if (
-      importYear !== importPlan.targetYear ||
-      JSON.stringify(state.steps) !== importPlan.workflowSnapshot
-    ) {
-      showToast('ปีปลายทางหรือการตั้งค่าเปลี่ยน กรุณาตรวจไฟล์ใหม่');
+    if (importYear !== importPlan.targetYear) {
+      showToast('ปีปลายทางเปลี่ยน กรุณาตรวจไฟล์ใหม่');
       return;
     }
 
@@ -166,20 +162,20 @@ export function ExcelPage() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-[10px] border border-[#dce8f5] bg-white">
-        <div className="flex items-center justify-between gap-2 border-b border-[#e6eff8] bg-gradient-to-r from-white to-[#f7fbff] px-5 py-4">
+      <section className="overflow-hidden rounded-[10px] border border-[#b8d0eb] bg-white shadow-xs">
+        <div className="flex items-center justify-between gap-2 border-b border-[#c2d8f0] bg-gradient-to-r from-[#eef4fc] to-[#ddeafa] px-5 py-4">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4 text-[#1762ce]" />
-            <h2 className="text-[14px] font-semibold text-[#315c88]">
+            <FileSpreadsheet className="h-4 w-4 text-[#0f489e]" />
+            <h2 className="text-[14px] font-semibold text-[#12396b]">
               {canWrite ? 'นำเข้า / ส่งออกครบทุกหมวด (Upsert)' : 'ส่งออกข้อมูลครบทุกหมวด'}
             </h2>
           </div>
-          <span className="rounded border border-[#c8dcf7] bg-[#edf3fd] px-2 py-0.5 font-mono-num text-[11px] font-medium text-[#285ea8]">
+          <span className="rounded border border-[#a4c3e8] bg-white px-2 py-0.5 font-mono-num text-[11px] font-semibold text-[#134791]">
             Excel .xlsx
           </span>
         </div>
 
-        <div className="space-y-4 p-5 text-xs text-[#546d87]">
+        <div className="space-y-4 p-5 text-xs text-[#314e70]">
           <p className="leading-relaxed">
             ใช้ไฟล์เดียวเชื่อมข้อมูลทั้ง 5 หมวด กรรมการ TOR กรรมการตรวจรับ ผลตรวจรับ
             ข้อมูลขั้นตอน และไฟล์แนบ ด้วยรหัสโครงการเดียวกัน
@@ -189,7 +185,7 @@ export function ExcelPage() {
             <button
               type="button"
               onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d6e4f3] bg-white px-3.5 py-2 text-xs font-medium text-[#2b578d] transition hover:border-[#b3cfee] hover:bg-[#eef5fd]"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-[#9fc0e6] bg-[#edf4fc] px-3.5 py-2 text-xs font-semibold text-[#134791] transition hover:border-[#6da3df] hover:bg-[#dcebfa]"
             >
               <Download className="h-3.5 w-3.5" />
               แม่แบบครบทุกหมวด
@@ -197,19 +193,19 @@ export function ExcelPage() {
             <button
               type="button"
               onClick={handleExportAll}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d6e4f3] bg-white px-3.5 py-2 text-xs font-medium text-[#2b578d] transition hover:border-[#b3cfee] hover:bg-[#eef5fd]"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-[#9fc0e6] bg-[#edf4fc] px-3.5 py-2 text-xs font-semibold text-[#134791] transition hover:border-[#6da3df] hover:bg-[#dcebfa]"
             >
               <Download className="h-3.5 w-3.5" />
               ส่งออกข้อมูลทั้งหมด
             </button>
           </div>
 
-          <p className="text-[11px] text-[#6d849d]">
+          <p className="text-[11px] text-[#4c6a8d]">
             วันที่เป็นข้อความ YYYY-MM-DD ค.ศ. · เงิน ลำดับ และงวดเป็นเซลล์ตัวเลข ·
             รหัสและเลขเอกสารเป็นข้อความ · ไม่แก้ชื่อชีต/หัวคอลัมน์
           </p>
 
-          <div className="rounded-lg border border-[#f2deb9] bg-[#fff8ed] p-3.5 text-[11.5px] leading-relaxed text-[#8d672b]">
+          <div className="rounded-lg border border-[#e8c98e] bg-[#fff6e5] p-3.5 text-[11.5px] leading-relaxed text-[#7d5514]">
             รองรับการนำเข้าแบบ <b>Upsert</b> หากพบรหัสโครงการเดิมในระบบจะอัปเดตข้อมูลให้เป็นปัจจุบัน
             หากเป็นรหัสใหม่จะเพิ่มเข้าระบบ (หากไม่ระบุแถวไฟล์แนบในชีตไฟล์แนบ ระบบจะคงไฟล์แนบเดิมไว้)
             <br />
@@ -221,9 +217,9 @@ export function ExcelPage() {
       </section>
 
       {canWrite && (
-        <section className="overflow-hidden rounded-[10px] border border-[#dce8f5] bg-white">
-          <div className="border-b border-[#e6eff8] bg-gradient-to-r from-white to-[#f7fbff] px-5 py-4">
-            <h2 className="text-[14px] font-semibold text-[#315c88]">
+        <section className="overflow-hidden rounded-[10px] border border-[#b8d0eb] bg-white shadow-xs">
+          <div className="border-b border-[#c2d8f0] bg-gradient-to-r from-[#eef4fc] to-[#ddeafa] px-5 py-4">
+            <h2 className="text-[14px] font-semibold text-[#12396b]">
               ตรวจสอบก่อนนำเข้า (Upsert)
             </h2>
           </div>
@@ -231,12 +227,12 @@ export function ExcelPage() {
           <div className="p-5">
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="block text-[11.5px] font-medium text-[#4f6784]">
+                <label className="block text-[11.5px] font-semibold text-[#23446b]">
                   ปีงบประมาณปลายทาง
                   <select
                     value={importYear}
                     onChange={(e) => handleYearChange(e.target.value)}
-                    className="mt-1.5 block min-h-[40px] w-full rounded-md border border-[#d9e4f0] bg-white px-3 py-2 text-xs text-[#2f455e] focus:border-[#5da5e4] focus:outline-none focus:ring-2 focus:ring-[#c8e5ff]"
+                    className="mt-1.5 block min-h-[40px] w-full rounded-md border border-[#adc7e4] bg-white px-3 py-2 text-xs text-[#153152] focus:border-[#175bbd] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
                   >
                     <option value="file">ใช้ปีที่ระบุในแต่ละแถวของไฟล์</option>
                     {getFiscalYearOptions(2570).map((y) => (
@@ -247,34 +243,34 @@ export function ExcelPage() {
                   </select>
                 </label>
 
-                <label className="block text-[11.5px] font-medium text-[#4f6784]">
+                <label className="block text-[11.5px] font-semibold text-[#23446b]">
                   ไฟล์ .xlsx (สูงสุด 10 MB)
                   <div className="mt-1.5 flex items-center gap-2">
                     <input
                       type="file"
                       accept=".xlsx"
                       onChange={handleSelectFile}
-                      className="block min-h-[40px] w-full rounded-md border border-[#d9e4f0] bg-[#f7fafe] px-3 py-1.5 text-xs text-[#364d68] file:mr-3 file:rounded file:border file:border-[#c8dcf2] file:bg-white file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-[#235d9e]"
+                      className="block min-h-[40px] w-full rounded-md border border-[#adc7e4] bg-[#edf4fc] px-3 py-1.5 text-xs text-[#173659] file:mr-3 file:rounded file:border file:border-[#93b7e0] file:bg-white file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-[#124894]"
                     />
                   </div>
                 </label>
               </div>
 
-              {isReading && <p className="text-xs text-[#4b6f96]">กำลังตรวจข้อมูล…</p>}
+              {isReading && <p className="text-xs font-medium text-[#154a94]">กำลังตรวจข้อมูล…</p>}
 
               {importError && (
-                <p className="rounded-md border border-[#f5c7c7] bg-[#fff2f2] p-3 text-xs text-[#b43c3c]">
+                <p className="rounded-md border border-[#edb0b0] bg-[#ffeaea] p-3 text-xs font-medium text-[#a32c2c]">
                   {importError}
                 </p>
               )}
 
               {importPlan && (
-                <div className="space-y-3 rounded-lg border border-[#dbe8f5] bg-[#f8fbff] p-4">
+                <div className="space-y-3 rounded-lg border border-[#a9c5e6] bg-[#edf4fc] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold text-[#284a70]">
+                    <h3 className="text-xs font-semibold text-[#12396b]">
                       ตรวจสอบก่อนนำเข้าโครงการ (Upsert)
                     </h3>
-                    <span className="text-[11px] text-[#5e7794] tabular-nums">
+                    <span className="text-[11px] font-medium text-[#35567d] tabular-nums">
                       ปีปลายทาง:{' '}
                       {importPlan.targetYear === 'file'
                         ? 'ตามปีในแต่ละแถว'
@@ -284,26 +280,26 @@ export function ExcelPage() {
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-[#7088a3]">
+                  <p className="text-[11px] text-[#45668c]">
                     {Object.entries(importPlan.years)
                       .map(([y, n]) => `ปี ${y}: ${n} โครงการ`)
                       .join(' · ') || 'ไม่มีรายการผ่าน'}
                   </p>
 
                   {importPlan.items.length > 0 && (
-                    <div className="max-h-[180px] space-y-1.5 overflow-y-auto rounded-md border border-[#dbe8f5] bg-white p-3 text-xs">
+                    <div className="max-h-[180px] space-y-1.5 overflow-y-auto rounded-md border border-[#b4cde8] bg-white p-3 text-xs">
                       {importPlan.items.map((item) => (
-                        <p key={item.record.code} className="flex items-center gap-2 text-[#355170]">
+                        <p key={item.record.code} className="flex items-center gap-2 text-[#1c3c61]">
                           <span
                             className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
                               item.mode === 'update'
-                                ? 'border-[#f2dca8] bg-[#fff7e8] text-[#9b6c16]'
-                                : 'border-[#bce5d2] bg-[#eaf8f2] text-[#177853]'
+                                ? 'border-[#e8c782] bg-[#fff3dc] text-[#8f5f0c]'
+                                : 'border-[#9cd8bd] bg-[#dff5eb] text-[#116947]'
                             }`}
                           >
                             {item.mode === 'update' ? 'อัปเดต' : 'ใหม่'}
                           </span>
-                          <b className="font-mono-num text-[#1762ce]">{item.record.code}</b>
+                          <b className="font-mono-num text-[#10499c]">{item.record.code}</b>
                           <span className="truncate">
                             · {item.record.title} · ปี {item.record.year}
                           </span>
@@ -313,7 +309,7 @@ export function ExcelPage() {
                   )}
 
                   {importPlan.errors.length > 0 && (
-                    <div className="max-h-[200px] space-y-1 overflow-y-auto rounded-md border border-[#f4c6c6] bg-[#fff4f4] p-3 text-[11px] leading-relaxed text-[#a63434]">
+                    <div className="max-h-[200px] space-y-1 overflow-y-auto rounded-md border border-[#edb0b0] bg-[#ffeaea] p-3 text-[11px] leading-relaxed text-[#9e2727]">
                       {importPlan.errors.map((err, i) => (
                         <div key={`${err.sheet}-${err.row}-${i}`}>
                           {err.sheet} แถว {err.row} รหัส {err.code || '—'}: {err.message}
@@ -322,7 +318,7 @@ export function ExcelPage() {
                     </div>
                   )}
 
-                  <p className="text-[11px] text-[#758ba4]">
+                  <p className="text-[11px] text-[#47678c]">
                     โครงการที่มีข้อมูลผิดจะไม่ถูกบันทึก โครงการที่ผ่านจะเพิ่มใหม่หรืออัปเดตตามรหัสโครงการอัตโนมัติ
                   </p>
 
@@ -330,7 +326,7 @@ export function ExcelPage() {
                     type="button"
                     disabled={importPlan.items.length === 0}
                     onClick={handleConfirmImport}
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1762ce] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#124ea8] disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:from-[#0b387d] hover:to-[#135ba4] disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <Upload className="h-3.5 w-3.5" />
                     ยืนยันนำเข้า {importPlan.items.length} โครงการ
@@ -341,7 +337,7 @@ export function ExcelPage() {
               {importStatus && (
                 <p
                   role="status"
-                  className="rounded-md border border-[#bce5d2] bg-[#eaf8f2] p-3 text-xs font-medium text-[#177853]"
+                  className="rounded-md border border-[#9cd8bd] bg-[#dff5eb] p-3 text-xs font-semibold text-[#116947]"
                 >
                   {importStatus}
                 </p>

@@ -270,7 +270,7 @@ export function previewExcelImport(
   userId: string,
   targetYear: string,
   steps: WorkflowStep[],
-): Omit<ImportPlan, 'targetYear' | 'workflowSnapshot'> {
+): Omit<ImportPlan, 'targetYear'> {
   if (
     targetYear !== 'file' &&
     (!Number.isInteger(Number(targetYear)) ||

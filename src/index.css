@@ -3,8 +3,8 @@
 @layer base {
   :root {
     font-family: "Noto Sans Thai", "Plus Jakarta Sans", Tahoma, sans-serif;
-    color: #233e5c;
-    background-color: #f2f7fd;
+    color: #132d4c;
+    background-color: #e3ecf7;
   }
 
   .font-mono-num {

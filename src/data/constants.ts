@@ -11,7 +11,6 @@ import type {
   SortKey,
   UserAccount,
   ViewFilter,
-  WorkflowRequiredField,
   WorkflowStep,
 } from '../types/procurement';
 
@@ -29,6 +28,10 @@ export const USERS: UserAccount[] = [
   { id: 'admin', name: 'แอดมิน (ผู้ดูแลระบบ)', role: 'admin' },
   { id: 'staff', name: 'เจ้าหน้าที่ (ดูข้อมูลอย่างเดียว)', role: 'staff' },
 ];
+
+export const ADMIN_PASSWORD =
+  (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined)?.trim() ||
+  'admin1234';
 
 export const STATUSES: ProjectStatus[] = [
   'รอดำเนินการ',
@@ -66,22 +69,6 @@ export const ATTACHMENT_CATEGORIES: AttachmentCategory[] = [
   'voucher',
 ];
 
-export const WORKFLOW_REQUIRED_FIELDS: WorkflowRequiredField[] = [
-  'title',
-  'department',
-  'method',
-  'fund',
-  'budget',
-  'reference',
-  'agreed',
-  'vendor',
-  'docNo',
-  'docDate',
-  'due',
-  'start',
-  'assignee',
-];
-
 export const PAGE_TITLES: Record<PageId, [string, string]> = {
   dashboard: [
     'ภาพรวมงานจัดซื้อจัดจ้าง',
@@ -103,14 +90,6 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
     'นำเข้า / ส่งออก Excel',
     'รองรับทะเบียนโครงการแบบ Upsert · เพิ่มรายการใหม่หรืออัปเดตตามรหัสโครงการ',
   ],
-  workflow: [
-    'ตั้งค่ากระบวนการ',
-    'กระบวนการตามที่ยืนยัน · แก้ไขการตั้งค่าได้โดยแอดมิน',
-  ],
-  guide: [
-    'คู่มือและขอบเขตระบบ',
-    'หลักการทำงาน การจัดเก็บข้อมูล Google Sheet/Drive และข้อกำหนดระบบ',
-  ],
 };
 
 export const NAV_ITEMS: Array<{
@@ -123,8 +102,6 @@ export const NAV_ITEMS: Array<{
   { id: 'register', label: 'ทะเบียนโครงการทั้งหมด' },
   { id: 'overdue', label: 'งานเกินกำหนด' },
   { id: 'excel', label: 'นำเข้า / ส่งออก Excel', dividerBefore: true },
-  { id: 'workflow', label: 'ตั้งค่ากระบวนการ' },
-  { id: 'guide', label: 'คู่มือและขอบเขต' },
 ];
 
 export const PROJECT_TABS: Array<{

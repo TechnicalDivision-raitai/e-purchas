@@ -6,7 +6,7 @@ import { currentFiscalYear } from '../../utils/date';
 export function Toolbar() {
   const { state, page, viewFilter, updateViewFilter, refreshFromStorage } = useProcurement();
 
-  if (page === 'excel' || page === 'workflow' || page === 'guide') {
+  if (page === 'excel') {
     return null;
   }
 
@@ -26,12 +26,12 @@ export function Toolbar() {
       className="no-print mb-5 flex flex-wrap items-end justify-between gap-3"
     >
       <div className="flex flex-1 flex-wrap items-end gap-3">
-        <label className="block text-[11px] font-medium text-[#60738a]">
+        <label className="block text-[11px] font-semibold text-[#2c4b70]">
           ปีงบประมาณ
           <select
             value={viewFilter.year}
             onChange={(e) => updateViewFilter({ year: e.target.value })}
-            className="mt-1.5 block min-h-[38px] min-w-[160px] rounded-md border border-[#d9e4f0] bg-white px-3 py-1.5 text-xs text-[#2f455e] focus:border-[#5da5e4] focus:outline-none focus:ring-2 focus:ring-[#c8e5ff]"
+            className="mt-1.5 block min-h-[38px] min-w-[160px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
           >
             <option value="">ทุกปีงบประมาณ</option>
             {years.map((y) => (
@@ -42,12 +42,12 @@ export function Toolbar() {
           </select>
         </label>
 
-        <label className="block text-[11px] font-medium text-[#60738a]">
+        <label className="block text-[11px] font-semibold text-[#2c4b70]">
           สถานะ
           <select
             value={viewFilter.status}
             onChange={(e) => updateViewFilter({ status: e.target.value })}
-            className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#d9e4f0] bg-white px-3 py-1.5 text-xs text-[#2f455e] focus:border-[#5da5e4] focus:outline-none focus:ring-2 focus:ring-[#c8e5ff]"
+            className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
           >
             <option value="">ทุกสถานะ</option>
             {STATUSES.map((s) => (
@@ -58,16 +58,16 @@ export function Toolbar() {
           </select>
         </label>
 
-        <label className="block min-w-[220px] flex-1 max-w-[430px] text-[11px] font-medium text-[#60738a]">
+        <label className="block min-w-[220px] flex-1 max-w-[430px] text-[11px] font-semibold text-[#2c4b70]">
           ค้นหา
           <div className="relative mt-1.5">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-[#8ea1b7]" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-[#5c7c9e]" />
             <input
               type="search"
               value={viewFilter.q}
               onChange={(e) => updateViewFilter({ q: e.target.value })}
               placeholder="ค้นหาเลขทะเบียน ชื่อโครงการ หรือหน่วยงาน…"
-              className="block min-h-[38px] w-full rounded-md border border-[#d9e4f0] bg-white py-1.5 pr-3 pl-8 text-xs text-[#2f455e] placeholder:text-[#96a6b8] focus:border-[#5da5e4] focus:outline-none focus:ring-2 focus:ring-[#c8e5ff]"
+              className="block min-h-[38px] w-full rounded-md border border-[#b6cde6] bg-white py-1.5 pr-3 pl-8 text-xs text-[#173659] placeholder:text-[#7690ad] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
             />
           </div>
         </label>
@@ -76,7 +76,7 @@ export function Toolbar() {
       <button
         type="button"
         onClick={refreshFromStorage}
-        className="inline-flex min-h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#dce8f5] bg-white px-3.5 py-1.5 text-xs font-medium text-[#4f6784] transition hover:border-[#bfd7f2] hover:bg-[#eef4fd]"
+        className="inline-flex min-h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#adc6e4] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#17488e] transition hover:border-[#7daee6] hover:bg-[#dfecfc]"
       >
         <RefreshCw className="h-3.5 w-3.5" />
         รีเฟรช
