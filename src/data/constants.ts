@@ -31,7 +31,7 @@ export const USERS: UserAccount[] = [
 
 export const ADMIN_PASSWORD =
   (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined)?.trim() ||
-  'admin1234';
+  '12345';
 
 export const STATUSES: ProjectStatus[] = [
   'รอดำเนินการ',
