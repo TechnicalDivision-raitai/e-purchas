@@ -6,7 +6,8 @@ import type {
 } from '../types/procurement';
 
 export const DEFAULT_GOOGLE_SCRIPT_URL: string =
-  (import.meta.env.VITE_GOOGLE_SCRIPT_URL as string | undefined)?.trim() || '';
+  (import.meta.env.VITE_GOOGLE_SCRIPT_URL as string | undefined)?.trim() ||
+  'https://script.google.com/macros/s/AKfycbxSQAaWvVcrjEEnYUFnX3A8t4DBKS1m5fdfFZ8y7qJK1b75urBE7Dlcxi_OZEuYzT3m/exec';
 
 export const DEFAULT_DRIVE_FOLDER_ID: string =
   (import.meta.env.VITE_DRIVE_FOLDER_ID as string | undefined)?.trim() || '';
