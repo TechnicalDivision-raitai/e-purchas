@@ -164,8 +164,16 @@ export function InboxPage({
                     </div>
                   </td>
 
-                  <td className="px-3 py-4 align-middle text-[12px] font-medium text-[#1b3a5e] break-words">
-                    {getResponsibleName(project)}
+                  <td className="px-3 py-4 align-middle text-[12px] font-medium leading-snug text-[#1b3a5e]">
+                    {getResponsibleName(project)
+                      .trim()
+                      .split(/\s+/)
+                      .map((part, idx, arr) => (
+                        <span key={idx} className="inline-block">
+                          {part}
+                          {idx < arr.length - 1 ? '\u00A0' : ''}
+                        </span>
+                      ))}
                   </td>
 
                   <td className="px-3 py-4 align-middle text-center">

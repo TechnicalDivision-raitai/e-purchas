@@ -32,7 +32,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         >
           <Menu className="h-4 w-4" />
         </button>
-        <span>พื้นที่ทำงาน</span>
+        <span>ระบบงานจัดซื้อจัดจ้าง</span>
         <span className="text-[#9cb6d4]">/</span>
         <b className="font-semibold text-[#0f2f57]">{currentTitle}</b>
       </div>

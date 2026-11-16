@@ -101,7 +101,7 @@ export function Sidebar({
         </div>
 
         <div className="mb-3 flex items-center justify-between px-2.5 text-[10.5px] font-medium tracking-wide text-[#8fbbe8]">
-          <span>พื้นที่ปฏิบัติงาน</span>
+          <span>ระบบงานจัดซื้อจัดจ้าง</span>
           <span className="rounded border border-[#3d78bd] bg-[#164a88] px-1.5 py-0.5 text-[10px] font-semibold text-[#d2e8ff]">
             {isAdmin ? 'Admin' : 'Staff'}
           </span>

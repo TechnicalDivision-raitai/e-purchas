@@ -407,6 +407,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
 
   const toggleSort = useCallback(
     (key: ViewFilter['sort']) => {
+      if (!['code', 'year', 'title'].includes(key)) return;
       const current = views[viewKey] || DEFAULT_VIEW_FILTER;
       const nextDir = current.sort === key && current.dir === 'asc' ? 'desc' : 'asc';
       updateViewFilter({ sort: key, dir: nextDir });

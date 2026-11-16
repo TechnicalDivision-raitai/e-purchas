@@ -146,19 +146,15 @@ export const PROJECT_TABS: Array<{
 export const TABLE_COLUMNS: Array<{
   key: SortKey;
   label: string;
-  width: number;
+  width: string;
+  sortable?: boolean;
 }> = [
-  { key: 'code', label: 'เลขทะเบียน', width: 118 },
-  { key: 'year', label: 'ปีงบฯ', width: 76 },
-  { key: 'title', label: 'ชื่อโครงการ / หน่วยงาน', width: 280 },
-  { key: 'docNo', label: 'เลขที่เอกสาร', width: 120 },
-  { key: 'docDate', label: 'วันที่เอกสาร', width: 110 },
-  { key: 'budget', label: 'งบประมาณ (บาท)', width: 130 },
-  { key: 'agreed', label: 'วงเงินตกลง (บาท)', width: 130 },
-  { key: 'responsibleName', label: 'ผู้รับผิดชอบ', width: 145 },
-  { key: 'step', label: 'ขั้นตอน', width: 165 },
-  { key: 'status', label: 'สถานะ', width: 135 },
-  { key: 'due', label: 'กำหนดเสร็จ', width: 112 },
+  { key: 'code', label: 'เลขทะเบียน', width: '11%', sortable: true },
+  { key: 'year', label: 'ปีงบฯ', width: '7%', sortable: true },
+  { key: 'title', label: 'ชื่อโครงการ / หน่วยงาน', width: '29%', sortable: true },
+  { key: 'agreed', label: 'วงเงินตกลง (บาท)', width: '13%', sortable: false },
+  { key: 'responsibleName', label: 'ผู้รับผิดชอบ', width: '14%', sortable: false },
+  { key: 'status', label: 'สถานะ', width: '13%', sortable: false },
 ];
 
 export const DEFAULT_STEP_NAMES: string[] = PROJECT_TABS.map(

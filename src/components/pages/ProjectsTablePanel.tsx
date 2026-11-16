@@ -5,12 +5,9 @@ import { buildExcelTables, exportWorkbookFile } from '../../domain/excel';
 import {
   canEditProject,
   getResponsibleName,
-  getStepName,
-  isOverdueProject,
 } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
 import type { ProjectRecord } from '../../types/procurement';
-import { formatThaiDate } from '../../utils/date';
 import { formatMoney } from '../../utils/format';
 import { StatusBadge } from '../common/StatusBadge';
 
@@ -31,7 +28,7 @@ export function ProjectsTablePanel({
   onEditProject,
   onCreateProject,
 }: ProjectsTablePanelProps) {
-  const { state, user, viewFilter, toggleSort, navigate, deleteProject, showToast } =
+  const { user, viewFilter, toggleSort, navigate, deleteProject, showToast } =
     useProcurement();
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<ProjectRecord | null>(
     null,
@@ -72,7 +69,7 @@ export function ProjectsTablePanel({
           <p className="mt-1 text-[11px] text-[#4c6a8d]">
             {compact
               ? 'แสดงไม่เกิน 5 รายการตามลำดับที่เลือก'
-              : 'กดหัวคอลัมน์เพื่อเรียงข้อมูล · งานที่ปิดแล้วยังคงอยู่ในทะเบียน'}
+              : 'กดหัวคอลัมน์ เลขทะเบียน ปีงบฯ หรือชื่อโครงการ เพื่อเรียงข้อมูล · งานที่ปิดแล้วยังคงอยู่ในทะเบียน'}
           </p>
         </div>
 
@@ -97,57 +94,75 @@ export function ProjectsTablePanel({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1560px] table-fixed border-collapse text-left text-[11.5px]">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-[11.5px]">
           <colgroup>
             {TABLE_COLUMNS.map((c) => (
-              <col key={c.key} style={{ width: `${c.width}px` }} />
+              <col
+                key={c.key}
+                style={{
+                  width:
+                    c.key === 'title' && user.role !== 'admin' ? '33%' : c.width,
+                }}
+              />
             ))}
-            <col style={{ width: user.role === 'admin' ? '168px' : '90px' }} />
+            <col style={{ width: user.role === 'admin' ? '13%' : '9%' }} />
           </colgroup>
           <thead>
             <tr className="border-b border-[#b8d0eb] bg-[#d8e7f8] text-[#143966]">
               {TABLE_COLUMNS.map((col) => {
-                const isSorted = viewFilter.sort === col.key;
+                const isSortable = Boolean(col.sortable);
+                const isSorted = isSortable && viewFilter.sort === col.key;
                 const ariaSort = isSorted
                   ? viewFilter.dir === 'asc'
                     ? 'ascending'
                     : 'descending'
                   : 'none';
+                const alignClass =
+                  col.key === 'agreed'
+                    ? 'text-right'
+                    : col.key === 'year' || col.key === 'status'
+                      ? 'text-center'
+                      : 'text-left';
 
                 return (
                   <th
                     key={col.key}
-                    aria-sort={ariaSort}
-                    className="px-3.5 py-3 text-[11px] font-semibold"
+                    aria-sort={isSortable ? ariaSort : undefined}
+                    className={`px-3.5 py-3 text-[11px] font-semibold ${alignClass}`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(col.key)}
-                      className={`inline-flex items-center gap-1 text-left transition hover:text-[#0b3d8a] ${
-                        col.key === 'budget' || col.key === 'agreed' ? 'w-full justify-end' : ''
-                      }`}
-                    >
-                      <span>{col.label}</span>
-                      {isSorted ? (
-                        viewFilter.dir === 'asc' ? (
-                          <ArrowUp className="h-3 w-3 shrink-0 text-[#0f4ca6]" />
+                    {isSortable ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col.key)}
+                        className={`inline-flex items-center gap-1 transition hover:text-[#0b3d8a] ${
+                          col.key === 'year' ? 'justify-center' : 'text-left'
+                        }`}
+                      >
+                        <span>{col.label}</span>
+                        {isSorted ? (
+                          viewFilter.dir === 'asc' ? (
+                            <ArrowUp className="h-3 w-3 shrink-0 text-[#0f4ca6]" />
+                          ) : (
+                            <ArrowDown className="h-3 w-3 shrink-0 text-[#0f4ca6]" />
+                          )
                         ) : (
-                          <ArrowDown className="h-3 w-3 shrink-0 text-[#0f4ca6]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="h-3 w-3 shrink-0 opacity-55" />
-                      )}
-                    </button>
+                          <ArrowUpDown className="h-3 w-3 shrink-0 opacity-55" />
+                        )}
+                      </button>
+                    ) : (
+                      <span>{col.label}</span>
+                    )}
                   </th>
                 );
               })}
-              <th className="px-3.5 py-3 text-[11px] font-semibold">จัดการ</th>
+              <th className="px-3.5 py-3 text-center text-[11px] font-semibold">
+                จัดการ
+              </th>
             </tr>
           </thead>
 
           <tbody>
             {rows.map((r) => {
-              const late = isOverdueProject(r);
               const editable = canEditProject(user, r);
 
               return (
@@ -155,53 +170,44 @@ export function ProjectsTablePanel({
                   key={r.id}
                   className="border-b border-[#dde8f5] transition-colors hover:bg-[#edf5fd]"
                 >
-                  <td className="px-3.5 py-3.5 align-middle font-mono-num text-[11.5px] font-semibold text-[#134a96]">
+                  <td className="px-3.5 py-3.5 align-middle font-mono-num text-[11.5px] font-semibold text-[#134a96] break-words">
                     {r.code}
                   </td>
-                  <td className="px-3.5 py-3.5 align-middle tabular-nums text-[#355478]">
+                  <td className="px-3.5 py-3.5 text-center align-middle tabular-nums text-[#355478]">
                     {r.year}
                   </td>
                   <td className="px-3.5 py-3.5 align-middle">
                     <div className="font-semibold leading-snug text-[#122e4f] break-words">
                       {r.title}
                     </div>
-                    <div className="mt-0.5 text-[10px] text-[#557191]">
+                    <div className="mt-0.5 text-[10px] text-[#557191] break-words">
                       {r.department} · {r.type}
                     </div>
-                  </td>
-                  <td className="px-3.5 py-3.5 align-middle font-mono-num text-[#38577a] break-words">
-                    {r.docNo || '—'}
-                  </td>
-                  <td className="px-3.5 py-3.5 align-middle tabular-nums text-[#38577a]">
-                    {formatThaiDate(r.docDate)}
-                  </td>
-                  <td className="px-3.5 py-3.5 text-right align-middle font-mono-num font-medium text-[#153152]">
-                    {formatMoney(r.budget)}
                   </td>
                   <td className="px-3.5 py-3.5 text-right align-middle font-mono-num font-medium text-[#153152]">
                     {formatMoney(r.agreed)}
                   </td>
                   <td className="px-3.5 py-3.5 align-middle">
-                    <div className="text-[#1c3c61] break-words">{getResponsibleName(r)}</div>
+                    <div className="leading-snug text-[#1c3c61]">
+                      {getResponsibleName(r)
+                        .trim()
+                        .split(/\s+/)
+                        .map((part, idx, arr) => (
+                          <span key={idx} className="inline-block">
+                            {part}
+                            {idx < arr.length - 1 ? '\u00A0' : ''}
+                          </span>
+                        ))}
+                    </div>
                     <div className="mt-0.5 text-[10px] text-[#537091]">
                       {r.ack ? '✓ รับทราบแล้ว' : 'รอรับทราบ'}
                     </div>
                   </td>
-                  <td className="px-3.5 py-3.5 align-middle text-[#284970]">
-                    {getStepName(state.steps, r.step)}
-                  </td>
-                  <td className="px-3.5 py-3.5 align-middle">
+                  <td className="px-3.5 py-3.5 text-center align-middle">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td
-                    className={`px-3.5 py-3.5 align-middle tabular-nums ${
-                      late ? 'font-semibold text-[#b82828]' : 'text-[#38577a]'
-                    }`}
-                  >
-                    {formatThaiDate(r.due)}
-                  </td>
-                  <td className="px-3.5 py-3.5 align-middle">
-                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                  <td className="px-3.5 py-3.5 text-center align-middle">
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => onViewProject(r.id)}
@@ -263,7 +269,7 @@ export function ProjectsTablePanel({
 
       <div className="flex items-center justify-between border-t border-[#d8e6f5] bg-[#f6fafe] px-5 py-3 text-[11px] text-[#4b688a]">
         <span className="tabular-nums font-medium">ทั้งหมด {rows.length} รายการ</span>
-        <span>เลื่อนแนวนอนเพื่อดูข้อมูลเพิ่มเติม →</span>
+        <span>คลิกปุ่ม “ดู” เพื่อเปิดรายละเอียดโครงการครบทุกหมวด</span>
       </div>
 
       {confirmDeleteTarget && (
