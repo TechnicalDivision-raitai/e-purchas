@@ -38,12 +38,10 @@ export function Sidebar({
 
   const inboxCount = getInboxProjects(state.rows, user.id).length;
   const overdueCount = state.rows.filter((r) => isOverdueProject(r)).length;
-  const registerCount = state.rows.length;
 
   const getCount = (id: PageId): number | null => {
     if (id === 'inbox') return inboxCount;
-    if (id === 'register') return registerCount;
-    if (id === 'overdue') return overdueCount;
+    if (id === 'overdue') return overdueCount > 0 ? overdueCount : null;
     return null;
   };
 
