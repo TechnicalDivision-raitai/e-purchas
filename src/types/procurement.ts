@@ -68,6 +68,14 @@ export interface AcceptanceRound {
   notes: string;
 }
 
+export interface DeliveryRound {
+  sequence?: number;
+  round: number;
+  docNo: string;
+  date: string;
+  notes: string;
+}
+
 export interface AttachmentFile {
   id: string;
   name: string;
@@ -112,6 +120,7 @@ export interface ProjectDetails {
   acceptanceDate?: string;
   acceptanceNotes?: string;
   acceptanceMembers?: CommitteeMember[];
+  deliveryRounds?: DeliveryRound[];
   acceptanceRounds?: AcceptanceRound[];
   voucherNo?: string;
   voucherDate?: string;

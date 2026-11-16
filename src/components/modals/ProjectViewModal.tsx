@@ -82,18 +82,6 @@ export function ProjectViewModal({
     setStatusModalOpen(false);
   }, [initialTab, projectId]);
 
-  useEffect(() => {
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (statusModalOpen) setStatusModalOpen(false);
-        else if (confirmDeleteOpen) setConfirmDeleteOpen(false);
-        else onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, confirmDeleteOpen, statusModalOpen]);
-
   if (!project) return null;
 
   const editable = canEditProject(user, project);
@@ -265,9 +253,6 @@ export function ProjectViewModal({
       aria-modal="true"
       aria-labelledby="view-modal-title"
       className="print-only-expand fixed inset-0 z-40 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="print-only-expand flex max-h-[92dvh] w-full max-w-[1100px] flex-col overflow-hidden rounded-[17px] border border-[#2b6cb5] bg-white shadow-2xl">
         <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-6 py-5 text-white">
@@ -493,6 +478,37 @@ export function ProjectViewModal({
                     ])}
                     {renderMembers(acceptance.members, 'คณะกรรมการตรวจรับ')}
                     {renderCategoryFiles('acceptance')}
+
+                    <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#47698f]">
+                      การส่งมอบ
+                    </h4>
+                    {acceptance.deliveries.some(
+                      (d) => d.date || d.docNo || d.notes,
+                    ) ? (
+                      <div className="space-y-3">
+                        {acceptance.deliveries
+                          .filter((d) => d.date || d.docNo || d.notes)
+                          .map((d, i) => (
+                            <div
+                              key={i}
+                              className="print-avoid-break rounded-xl border border-[#d8e5f2] bg-[#f7faff] p-3.5"
+                            >
+                              <h5 className="mb-2.5 text-xs font-semibold text-[#51769b]">
+                                ครั้งที่ {i + 1} · งวดที่ {d.round}
+                              </h5>
+                              {renderReportTable([
+                                ['เลขที่หนังสือส่งมอบ / ใบส่งของ', d.docNo],
+                                ['วันที่ส่งมอบ', formatThaiDate(d.date)],
+                                ['รายละเอียดการส่งมอบ', d.notes],
+                              ])}
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg bg-[#f7fafd] p-3.5 text-xs text-[#8da0b4]">
+                        ยังไม่มีข้อมูลการส่งมอบ
+                      </p>
+                    )}
 
                     <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#47698f]">
                       ผลการตรวจรับ

@@ -3,6 +3,7 @@ import {
   Clock,
   FileText,
   FolderKanban,
+  PackageCheck,
   Save,
   ShoppingCart,
   Trash2,
@@ -31,6 +32,7 @@ import {
 import {
   cleanAcceptanceRounds,
   cleanCommitteeMembers,
+  cleanDeliveryRounds,
   createAcceptanceDraft,
   deriveProgressFromTabs,
   getAttachmentMeta,
@@ -48,6 +50,7 @@ import type {
   AttachmentCategory,
   AttachmentFile,
   CommitteeMember,
+  DeliveryRound,
   ProjectDetails,
   ProjectRecord,
   ProjectStatus,
@@ -94,6 +97,7 @@ interface DraftState {
   details: ProjectDetails;
   torMembers: CommitteeMember[];
   acceptanceMembers: CommitteeMember[];
+  deliveryRounds: DeliveryRound[];
   acceptanceRounds: AcceptanceRound[];
   files: AttachmentFile[];
   statusMode: 'auto' | 'manual';
@@ -129,6 +133,7 @@ function createDraftFromRecord(old: ProjectRecord | undefined): DraftState {
     },
     torMembers,
     acceptanceMembers: acceptance.members,
+    deliveryRounds: acceptance.deliveries,
     acceptanceRounds: acceptance.rounds,
     files: structuredClone(old?.files || []),
     statusMode:
@@ -175,14 +180,6 @@ export function ProjectEditorModal({
     setUploadErrors({ general: '', tor: '', order: '', acceptance: '', voucher: '' });
   }, [projectId, initialTab, existing]);
 
-  useEffect(() => {
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
   const activeIndex = Math.max(
     0,
     PROJECT_TABS.findIndex((t) => t.id === activeTab),
@@ -202,6 +199,7 @@ export function ProjectEditorModal({
             ...draft.details,
             torMembers: draft.torMembers,
             acceptanceMembers: draft.acceptanceMembers,
+            deliveryRounds: draft.deliveryRounds,
             acceptanceRounds: draft.acceptanceRounds,
           },
           files: draft.files,
@@ -368,12 +366,14 @@ export function ProjectEditorModal({
     try {
       const cleanedTorMembers = cleanCommitteeMembers(draft.torMembers);
       const cleanedAcceptanceMembers = cleanCommitteeMembers(draft.acceptanceMembers);
+      const cleanedDeliveries = cleanDeliveryRounds(draft.deliveryRounds);
       const cleanedRounds = cleanAcceptanceRounds(draft.acceptanceRounds);
 
       const details: ProjectDetails = {
         ...draft.details,
         torMembers: cleanedTorMembers,
         acceptanceMembers: cleanedAcceptanceMembers,
+        deliveryRounds: cleanedDeliveries,
         acceptanceRounds: cleanedRounds,
       };
 
@@ -749,9 +749,6 @@ export function ProjectEditorModal({
       aria-modal="true"
       aria-labelledby="editor-modal-title"
       className="no-print fixed inset-0 z-40 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="flex max-h-[92dvh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[17px] border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
         <div className="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-6 py-5 text-white">
@@ -1241,6 +1238,172 @@ export function ProjectEditorModal({
                       'acceptance',
                       'ไฟล์แนบคำสั่งแต่งตั้งคณะกรรมการตรวจรับ (PDF, Excel, Word)',
                     )}
+
+                    <div className="col-span-full rounded-2xl border border-[#b4cde8] bg-[#edf4fc] p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <h4 className="flex items-center gap-2 text-xs font-semibold text-[#17406e]">
+                          <span className="grid h-6 w-6 place-items-center rounded-md bg-[#0f4ca6] text-white">
+                            <PackageCheck className="h-3.5 w-3.5" />
+                          </span>
+                          การส่งมอบ{' '}
+                          <span className="font-mono-num text-[#3d6591]">
+                            ({draft.deliveryRounds.length} ครั้ง)
+                          </span>
+                        </h4>
+                        <button
+                          type="button"
+                          disabled={draft.deliveryRounds.length >= 100}
+                          onClick={() =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              deliveryRounds: [
+                                ...prev.deliveryRounds,
+                                {
+                                  round:
+                                    Math.max(
+                                      0,
+                                      ...prev.deliveryRounds.map(
+                                        (r) => Number(r.round) || 0,
+                                      ),
+                                    ) + 1,
+                                  docNo: '',
+                                  date: '',
+                                  notes: '',
+                                },
+                              ],
+                            }))
+                          }
+                          className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
+                        >
+                          ＋ เพิ่มการส่งมอบ
+                        </button>
+                      </div>
+
+                      {draft.deliveryRounds.length === 0 ? (
+                        <p className="text-[11px] text-[#5c7899]">
+                          ยังไม่มีข้อมูลการส่งมอบ กด “เพิ่มการส่งมอบ” เพื่อเพิ่ม
+                        </p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {draft.deliveryRounds.map((delivItem, dIdx) => (
+                            <div
+                              key={dIdx}
+                              className="relative rounded-xl border border-[#aec7e4] bg-white p-3.5 pr-9"
+                            >
+                              <button
+                                type="button"
+                                aria-label={`ลบการส่งมอบครั้งที่ ${dIdx + 1}`}
+                                title="ลบการส่งมอบ"
+                                onClick={() =>
+                                  setDraft((prev) => ({
+                                    ...prev,
+                                    deliveryRounds: prev.deliveryRounds.filter(
+                                      (_, i) => i !== dIdx,
+                                    ),
+                                  }))
+                                }
+                                className="absolute top-3 right-2.5 rounded p-1 text-xs text-[#8ba4bd] hover:bg-[#fff0f1] hover:text-[#b95b68]"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+
+                              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                                <label className="block text-[11px] text-[#556f8c]">
+                                  งวดที่
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    value={delivItem.round}
+                                    onChange={(e) =>
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        deliveryRounds: prev.deliveryRounds.map(
+                                          (item, i) =>
+                                            i === dIdx
+                                              ? {
+                                                  ...item,
+                                                  round: Number(e.target.value),
+                                                }
+                                              : item,
+                                        ),
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                  />
+                                </label>
+
+                                <label className="block text-[11px] text-[#556f8c]">
+                                  เลขที่หนังสือส่งมอบ / ใบส่งของ
+                                  <input
+                                    type="text"
+                                    maxLength={200}
+                                    placeholder="เช่น ใบส่งของเลขที่…"
+                                    value={delivItem.docNo}
+                                    onChange={(e) =>
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        deliveryRounds: prev.deliveryRounds.map(
+                                          (item, i) =>
+                                            i === dIdx
+                                              ? { ...item, docNo: e.target.value }
+                                              : item,
+                                        ),
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
+                                  />
+                                </label>
+
+                                <label className="block text-[11px] text-[#556f8c]">
+                                  วันที่ส่งมอบ
+                                  <input
+                                    type="date"
+                                    value={delivItem.date}
+                                    onChange={(e) =>
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        deliveryRounds: prev.deliveryRounds.map(
+                                          (item, i) =>
+                                            i === dIdx
+                                              ? { ...item, date: e.target.value }
+                                              : item,
+                                        ),
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                  />
+                                </label>
+
+                                <label className="col-span-full block">
+                                  <span className="sr-only">
+                                    รายละเอียดการส่งมอบครั้งที่ {dIdx + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    maxLength={2000}
+                                    placeholder="รายละเอียดการส่งมอบงาน / พัสดุ…"
+                                    value={delivItem.notes}
+                                    onChange={(e) =>
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        deliveryRounds: prev.deliveryRounds.map(
+                                          (item, i) =>
+                                            i === dIdx
+                                              ? { ...item, notes: e.target.value }
+                                              : item,
+                                        ),
+                                      }))
+                                    }
+                                    className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <div className="col-span-full rounded-2xl border border-[#b4cde8] bg-[#edf4fc] p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">

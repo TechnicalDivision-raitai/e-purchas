@@ -35,18 +35,6 @@ export function StatusTransitionModal({
     setModalError('');
   }, [project]);
 
-  useEffect(() => {
-    if (!project) return;
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [project, onClose]);
-
   if (!project) return null;
 
   const handleSaveStatus = () => {
@@ -131,9 +119,6 @@ export function StatusTransitionModal({
       aria-modal="true"
       aria-labelledby="status-transition-modal-title"
       className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/75 p-4 backdrop-blur-[2px]"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-[#2b6cb5] bg-white shadow-2xl">
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-5 py-4 text-white">

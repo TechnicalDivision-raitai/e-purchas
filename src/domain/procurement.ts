@@ -11,6 +11,7 @@ import type {
   AcceptanceRound,
   AttachmentCategory,
   CommitteeMember,
+  DeliveryRound,
   ProjectDetails,
   ProjectRecord,
   ProjectStatus,
@@ -161,6 +162,9 @@ export function deriveProgressFromTabs(
       details.committeeDate ||
       details.acceptanceNo?.trim() ||
       (details.acceptanceMembers || []).some((m) => m.name?.trim()) ||
+      (details.deliveryRounds || []).some(
+        (d) => d.date || d.docNo?.trim() || d.notes?.trim(),
+      ) ||
       (details.acceptanceRounds || []).some(
         (r) => r.date || r.result || r.notes?.trim(),
       ) ||
@@ -431,8 +435,39 @@ export function getAttachmentMeta(
   };
 }
 
+export function cleanDeliveryRounds(rows: Partial<DeliveryRound>[]): DeliveryRound[] {
+  if (!Array.isArray(rows) || rows.length > 100) {
+    throw new Error('บันทึกการส่งมอบได้ไม่เกิน 100 ครั้ง');
+  }
+
+  return rows
+    .map((r) => ({
+      round: Number(r.round),
+      docNo: String(r.docNo || '').trim(),
+      date: String(r.date || ''),
+      notes: String(r.notes || '').trim(),
+    }))
+    .filter((r) => r.date || r.docNo || r.notes)
+    .map((r) => {
+      if (!Number.isInteger(r.round) || r.round < 1) {
+        throw new Error('งวดส่งมอบต้องเป็นจำนวนเต็มตั้งแต่ 1');
+      }
+      if (r.date && !isValidIsoDate(r.date)) {
+        throw new Error('วันที่ส่งมอบไม่ถูกต้อง');
+      }
+      if (r.docNo.length > 200) {
+        throw new Error('เลขที่หนังสือส่งมอบยาวเกิน 200 ตัวอักษร');
+      }
+      if (r.notes.length > 2000) {
+        throw new Error('รายละเอียดการส่งมอบยาวเกิน 2,000 ตัวอักษร');
+      }
+      return r;
+    });
+}
+
 export function createAcceptanceDraft(details: ProjectDetails = {}): {
   members: CommitteeMember[];
+  deliveries: DeliveryRound[];
   rounds: AcceptanceRound[];
 } {
   const members: CommitteeMember[] =
@@ -449,6 +484,11 @@ export function createAcceptanceDraft(details: ProjectDetails = {}): {
           }))
       : [{ name: '', position: '', role: 'ประธานกรรมการ' }]);
 
+  const deliveries: DeliveryRound[] =
+    details.deliveryRounds && details.deliveryRounds.length > 0
+      ? details.deliveryRounds
+      : [{ round: 1, docNo: '', date: '', notes: '' }];
+
   const rounds: AcceptanceRound[] =
     details.acceptanceRounds ??
     (details.acceptanceDate || details.acceptanceNotes
@@ -464,6 +504,7 @@ export function createAcceptanceDraft(details: ProjectDetails = {}): {
 
   return {
     members: structuredClone(members),
+    deliveries: structuredClone(deliveries),
     rounds: structuredClone(rounds),
   };
 }
