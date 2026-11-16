@@ -64,6 +64,113 @@ interface ProcurementContextValue {
 
 const ProcurementContext = createContext<ProcurementContextValue | null>(null);
 
+const IDB_NAME = 'raitai-procurement-db';
+const IDB_STORE = 'state';
+
+function saveStateToIndexedDB(state: ProcurementState): void {
+  if (typeof window === 'undefined' || !('indexedDB' in window)) return;
+  try {
+    const req = window.indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE);
+      }
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(state, STORAGE_KEY);
+      tx.oncomplete = () => db.close();
+    };
+  } catch {
+    // Ignore IndexedDB errors
+  }
+}
+
+function loadStateFromIndexedDB(): Promise<ProcurementState | null> {
+  if (typeof window === 'undefined' || !('indexedDB' in window)) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const getReq = tx.objectStore(IDB_STORE).get(STORAGE_KEY);
+        getReq.onsuccess = () => {
+          db.close();
+          resolve((getReq.result as ProcurementState | undefined) || null);
+        };
+        getReq.onerror = () => {
+          db.close();
+          resolve(null);
+        };
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function persistStateLocally(next: ProcurementState): void {
+  saveStateToIndexedDB(next);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // If localStorage hits ~5MB quota due to large attachments, store compact metadata in localStorage while full files live in IndexedDB
+    try {
+      const compact: ProcurementState = {
+        ...next,
+        rows: next.rows.map((r) => ({
+          ...r,
+          files: (r.files || []).map((f) => {
+            if (f.data && f.data.length > 100000) {
+              const { data: _omitted, ...rest } = f;
+              return rest;
+            }
+            return f;
+          }),
+        })),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
+    } catch {
+      // Full state is still safely persisted in IndexedDB and memory
+    }
+  }
+}
+
+function mergeLocalFileBlobs(
+  incomingRows: ProjectRecord[],
+  existingRows: ProjectRecord[],
+): ProjectRecord[] {
+  const fileDataById = new Map<string, string>();
+  for (const row of existingRows) {
+    for (const f of row.files || []) {
+      if (f.id && f.data) {
+        fileDataById.set(f.id, f.data);
+      }
+    }
+  }
+  return incomingRows.map((row) => ({
+    ...row,
+    files: (row.files || []).map((f) => {
+      if (!f.data && !f.url && f.id && fileDataById.has(f.id)) {
+        return { ...f, data: fileDataById.get(f.id) };
+      }
+      return f;
+    }),
+  }));
+}
+
 function normalizeLoadedState(raw: ProcurementState): ProcurementState {
   return {
     version: raw.version || 2,
@@ -157,16 +264,15 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         const remote = await fetchProjectsFromGoogleSheet();
         if (remote) {
           setState((prev) => {
+            const mergedRows = remote.rows
+              ? mergeLocalFileBlobs(remote.rows, prev.rows)
+              : prev.rows;
             const next = normalizeLoadedState({
               version: prev.version,
               steps: createDefaultSteps(),
-              rows: remote.rows || prev.rows,
+              rows: mergedRows,
             });
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-            } catch {
-              // Keep state in memory even if localStorage quota is tight
-            }
+            persistStateLocally(next);
             return next;
           });
         }
@@ -199,6 +305,21 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         setSyncState('error');
       });
+  }, []);
+
+  useEffect(() => {
+    void loadStateFromIndexedDB().then((idbState) => {
+      if (idbState && Array.isArray(idbState.rows) && idbState.rows.length > 0) {
+        setState((prev) => {
+          const normalized = normalizeLoadedState(idbState);
+          if (prev.rows.length === 0) return normalized;
+          return {
+            ...prev,
+            rows: mergeLocalFileBlobs(prev.rows, normalized.rows),
+          };
+        });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -302,7 +423,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
       try {
         const next = structuredClone(state);
         mutator(next);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        persistStateLocally(next);
         setState(next);
         pushToCloud(next);
         return true;
@@ -327,8 +448,11 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
 
   const refreshFromStorage = useCallback(async () => {
     try {
+      const idbState = await loadStateFromIndexedDB();
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
+      if (idbState && Array.isArray(idbState.rows) && idbState.rows.length > 0) {
+        setState(normalizeLoadedState(idbState));
+      } else if (saved) {
         setState(normalizeLoadedState(JSON.parse(saved) as ProcurementState));
       }
       if (isGoogleSyncConfigured()) {

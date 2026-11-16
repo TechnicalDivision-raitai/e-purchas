@@ -325,8 +325,8 @@ export function ProjectEditorModal({
 
       const localFiles = [...draft.files, ...pending].filter((f) => Boolean(f.data));
       const totalLocalSize = localFiles.reduce((sum, f) => sum + f.size, 0);
-      if (totalLocalSize > MAX_PROJECT_ATTACHMENT_BYTES) {
-        throw new Error('ไฟล์แนบที่เก็บในเครื่องรวมทุกหมวดต้องไม่เกิน 2 MB ต่อโครงการ');
+      if (totalLocalSize > MAX_PROJECT_ATTACHMENT_BYTES * 5) {
+        throw new Error('ไฟล์แนบรวมทุกหมวดต้องไม่เกิน 250 MB ต่อโครงการ');
       }
 
       setDraft((prev) => ({ ...prev, files: [...prev.files, ...pending] }));
@@ -685,11 +685,7 @@ export function ProjectEditorModal({
             type="file"
             multiple
             disabled={isUploading}
-            accept={
-              category === 'general'
-                ? 'application/pdf,image/png,image/jpeg'
-                : '.pdf,.xlsx,.xls,.docx,.doc'
-            }
+            accept=".pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg,.zip,.rar"
             onChange={(e) => handleAddFiles(e, category)}
             className="sr-only"
           />
@@ -699,8 +695,8 @@ export function ProjectEditorModal({
         </div>
         <p className="mt-1.5 text-[10.5px] text-[#5c7899]">
           {isGoogleSyncConfigured()
-            ? 'อัปโหลดไฟล์ไปยัง Google Drive อัตโนมัติ (หรือเก็บในเครื่องไม่เกิน 2 MB หากออฟไลน์)'
-            : 'ไฟล์ทุกหมวดรวมไม่เกิน 2 MB ต่อโครงการ · เก็บในเบราว์เซอร์นี้'}
+            ? 'รองรับไฟล์ขนาดใหญ่สูงสุด 50 MB ต่อไฟล์ (อัปโหลดไปยัง Google Drive หรือจัดเก็บในฐานข้อมูลเบราว์เซอร์อัตโนมัติ)'
+            : 'รองรับไฟล์ขนาดใหญ่สูงสุด 50 MB ต่อไฟล์ · แนบได้หลายไฟล์ต่อหมวด'}
         </p>
 
         {files.length > 0 && (
@@ -714,7 +710,10 @@ export function ProjectEditorModal({
                   <FileText className="h-3.5 w-3.5 shrink-0 text-[#185bb5]" />
                   <span className="truncate">{f.name}</span>
                   <span className="shrink-0 font-mono-num text-[11px] text-[#557191]">
-                    · {(f.size / 1024).toFixed(0)} KB
+                    ·{' '}
+                    {f.size >= 1024 * 1024
+                      ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                      : `${Math.max(1, Math.round(f.size / 1024))} KB`}
                   </span>
                   {f.url && (
                     <span className="shrink-0 rounded border border-[#9cd8bd] bg-[#dff5eb] px-1.5 py-0.5 text-[10px] font-semibold text-[#116947]">
@@ -1030,7 +1029,7 @@ export function ProjectEditorModal({
 
                     {renderCategoryUpload(
                       'general',
-                      'เอกสารแนบโครงการ (PDF / PNG / JPG · รวมไม่เกิน 2 MB)',
+                      'เอกสารแนบโครงการ (PDF, Word, Excel, รูปภาพ, ZIP · สูงสุด 50 MB/ไฟล์)',
                     )}
                   </div>
                 )}

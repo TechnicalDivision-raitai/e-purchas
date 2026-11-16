@@ -166,17 +166,58 @@ export function ProjectViewModal({
       <div>
         <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#17467d]">{title}</h4>
         {valid.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {valid.map((m, i) => (
-              <div key={i}>
-                {renderReportTable([
-                  ['ลำดับ', i + 1],
-                  ['ชื่อ–นามสกุล', m.name],
-                  ['ตำแหน่งราชการ', m.position],
-                  ['หน้าที่', m.role],
-                ])}
-              </div>
-            ))}
+          <div className="print-avoid-break mb-3 overflow-hidden rounded-xl border border-[#adc7e4] bg-white">
+            <table className="w-full table-fixed border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-[#adc7e4] bg-[#e9f2fc] text-[#1e4675]">
+                  <th
+                    scope="col"
+                    className="w-[10%] border-r border-[#d4e3f3] px-3 py-2.5 text-center font-semibold"
+                  >
+                    ลำดับ
+                  </th>
+                  <th
+                    scope="col"
+                    className="w-[34%] border-r border-[#d4e3f3] px-3 py-2.5 text-left font-semibold"
+                  >
+                    ชื่อ
+                  </th>
+                  <th
+                    scope="col"
+                    className="w-[32%] border-r border-[#d4e3f3] px-3 py-2.5 text-left font-semibold"
+                  >
+                    ตำแหน่ง
+                  </th>
+                  <th
+                    scope="col"
+                    className="w-[24%] px-3 py-2.5 text-left font-semibold"
+                  >
+                    หน้าที่
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {valid.map((m, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-[#d4e3f3] last:border-b-0"
+                  >
+                    <td className="border-r border-[#d4e3f3] px-3 py-2.5 text-center align-top font-mono-num font-semibold text-[#1e4675]">
+                      {i + 1}
+                    </td>
+                    <td className="border-r border-[#d4e3f3] px-3 py-2.5 align-top text-[#153152] break-words">
+                      {m.name || '—'}
+                    </td>
+                    <td className="border-r border-[#d4e3f3] px-3 py-2.5 align-top text-[#153152] break-words">
+                      {m.position || '—'}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-[#153152] break-words">
+                      {m.role || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="rounded-lg border border-[#d6e4f3] bg-[#f0f6fd] p-3.5 text-xs text-[#547396]">
@@ -211,7 +252,10 @@ export function ProjectViewModal({
                   <FileText className="h-3.5 w-3.5 shrink-0 text-[#185bb5]" />
                   <span className="truncate">{f.name}</span>
                   <span className="shrink-0 font-mono-num text-[11px] text-[#557191]">
-                    · {(f.size / 1024).toFixed(0)} KB
+                    ·{' '}
+                    {f.size >= 1024 * 1024
+                      ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                      : `${Math.max(1, Math.round(f.size / 1024))} KB`}
                   </span>
                 </span>
 

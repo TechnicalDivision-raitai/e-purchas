@@ -89,6 +89,17 @@ export async function syncProjectsToGoogleSheet(
 ): Promise<boolean> {
   if (!DEFAULT_GOOGLE_SCRIPT_URL) return false;
 
+  const sanitizedRows = state.rows.map((row) => ({
+    ...row,
+    files: (row.files || []).map((f) => {
+      if (f.data && f.data.length > 35000) {
+        const { data: _omitted, ...rest } = f;
+        return rest;
+      }
+      return f;
+    }),
+  }));
+
   const response = await fetch(DEFAULT_GOOGLE_SCRIPT_URL, {
     method: 'POST',
     redirect: 'follow',
@@ -100,8 +111,8 @@ export async function syncProjectsToGoogleSheet(
       sheetName: PROCUREMENT_SHEET_NAME,
       version: state.version,
       steps: state.steps,
-      rows: state.rows,
-      projects: state.rows,
+      rows: sanitizedRows,
+      projects: sanitizedRows,
       syncedAt: new Date().toISOString(),
     }),
   });

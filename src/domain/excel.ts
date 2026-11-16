@@ -625,8 +625,8 @@ export function previewExcelImport(
         });
       }
 
-      if (r.files.reduce((n, f) => n + f.size, 0) > MAX_PROJECT_ATTACHMENT_BYTES) {
-        throw new Error('ไฟล์แนบรวมเกิน 2MB ต่อโครงการ');
+      if (r.files.reduce((n, f) => n + f.size, 0) > MAX_PROJECT_ATTACHMENT_BYTES * 5) {
+        throw new Error('ไฟล์แนบรวมเกิน 250 MB ต่อโครงการ');
       }
 
       if (d.torMembers) {

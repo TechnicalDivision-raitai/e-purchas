@@ -401,6 +401,8 @@ const ATTACHMENT_MIME_TYPES: Record<string, string> = {
   xls: 'application/vnd.ms-excel',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   doc: 'application/msword',
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
 };
 
 export function getAttachmentMeta(
@@ -409,28 +411,34 @@ export function getAttachmentMeta(
 ): { name: string; type: string; size: number } {
   const ext = String(file.name).split('.').pop()?.toLowerCase() || '';
   const isDocCategory = ['tor', 'acceptance', 'order', 'voucher'].includes(category);
-  const allowed = isDocCategory
-    ? ['pdf', 'xlsx', 'xls', 'docx', 'doc']
-    : ['pdf', 'png', 'jpg', 'jpeg'];
+  const allowed = [
+    'pdf',
+    'xlsx',
+    'xls',
+    'docx',
+    'doc',
+    'png',
+    'jpg',
+    'jpeg',
+    'zip',
+    'rar',
+  ];
 
-  if (
-    !allowed.includes(ext) ||
-    (file.type && file.type !== 'application/octet-stream' && file.type !== ATTACHMENT_MIME_TYPES[ext])
-  ) {
+  if (!allowed.includes(ext)) {
     throw new Error(
       isDocCategory
-        ? 'รองรับไฟล์เอกสารเฉพาะ PDF, Excel (.xlsx/.xls), Word (.docx/.doc)'
-        : 'รองรับเฉพาะ PDF, PNG และ JPG',
+        ? 'รองรับไฟล์ PDF, Excel (.xlsx/.xls), Word (.docx/.doc), รูปภาพ (PNG/JPG) และ ZIP/RAR'
+        : 'รองรับไฟล์ PDF, รูปภาพ (PNG/JPG), Word, Excel และ ZIP/RAR',
     );
   }
 
   if (!file.size || file.size > MAX_PROJECT_ATTACHMENT_BYTES) {
-    throw new Error('ไฟล์ต้องมีข้อมูลและขนาดไม่เกิน 2 MB');
+    throw new Error('ไฟล์ต้องมีข้อมูลและขนาดไม่เกิน 50 MB ต่อไฟล์');
   }
 
   return {
     name: file.name,
-    type: ATTACHMENT_MIME_TYPES[ext],
+    type: ATTACHMENT_MIME_TYPES[ext] || file.type || 'application/octet-stream',
     size: file.size,
   };
 }

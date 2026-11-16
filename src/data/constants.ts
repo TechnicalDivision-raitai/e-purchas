@@ -19,8 +19,8 @@ export const VIEW_STORAGE_KEY = `${STORAGE_KEY}-views`;
 export const SESSION_USER_KEY = 'raitai_procurement_session_user';
 
 export const DEFAULT_DEPARTMENT = 'กองช่าง';
-export const MAX_PROJECT_ATTACHMENT_BYTES = 2 * 1024 * 1024;
-export const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_PROJECT_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+export const MAX_IMPORT_FILE_BYTES = 50 * 1024 * 1024;
 export const MAX_IMPORT_TOTAL_ROWS = 5000;
 export const BASE64_CHUNK_SIZE = 30000;
 
@@ -131,9 +131,9 @@ export const PROJECT_TABS: Array<{
   },
   {
     id: 'acceptance',
-    label: 'ตั้งกรรมการและตรวจรับ',
-    heading: 'ตั้งคณะกรรมการและตรวจรับ',
-    description: 'บันทึกคำสั่งแต่งตั้งคณะกรรมการตรวจรับ และผลการตรวจรับแต่ละครั้ง',
+    label: 'การส่งมอบและการตรวจรับ',
+    heading: 'การส่งมอบและการตรวจรับ',
+    description: 'บันทึกคำสั่งแต่งตั้งคณะกรรมการตรวจรับ การส่งมอบงาน และผลการตรวจรับแต่ละครั้ง',
   },
   {
     id: 'voucher',

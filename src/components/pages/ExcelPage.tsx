@@ -66,7 +66,7 @@ export function ExcelPage() {
     if (!file) return;
 
     if (file.size > MAX_IMPORT_FILE_BYTES) {
-      setImportError('ไฟล์ต้องไม่เกิน 10 MB');
+      setImportError('ไฟล์ต้องไม่เกิน 50 MB');
       e.target.value = '';
       return;
     }
@@ -244,7 +244,7 @@ export function ExcelPage() {
                 </label>
 
                 <label className="block text-[11.5px] font-semibold text-[#23446b]">
-                  ไฟล์ .xlsx (สูงสุด 10 MB)
+                  ไฟล์ .xlsx (สูงสุด 50 MB)
                   <div className="mt-1.5 flex items-center gap-2">
                     <input
                       type="file"
