@@ -70,8 +70,154 @@ export function getResponsibleName(project: Pick<ProjectRecord, 'responsibleName
   return project.responsibleName ?? getUserName(project.assignee);
 }
 
+export function normalizeLegacyStepId(stepId: string | undefined | null): string {
+  if (!stepId) return 's1';
+  if (stepId === 's6') return 's4';
+  if (stepId === 's7' || stepId === 's8') return 's5';
+  if (['s1', 's2', 's3', 's4', 's5'].includes(stepId)) return stepId;
+  return 's1';
+}
+
 export function getStepName(steps: WorkflowStep[], stepId: string): string {
-  return steps.find((s) => s.id === stepId)?.name || stepId;
+  const normalized = normalizeLegacyStepId(stepId);
+  return steps.find((s) => s.id === normalized)?.name || stepId;
+}
+
+export function getAckAt(project: Pick<ProjectRecord, 'ack' | 'ackAt' | 'history'>): string | null {
+  if (!project.ack) return null;
+  if (project.ackAt) return project.ackAt;
+  const history = project.history || [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i]?.action.includes('รับทราบงาน')) {
+      return history[i].at;
+    }
+  }
+  return null;
+}
+
+export function getStatusUpdatedAt(
+  project: Pick<ProjectRecord, 'statusUpdatedAt' | 'history'>,
+): string | null {
+  if (project.statusUpdatedAt) return project.statusUpdatedAt;
+  const history = project.history || [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const action = history[i]?.action || '';
+    if (
+      action.includes('เปลี่ยนสถานะ') ||
+      action.includes('เปลี่ยน ') ||
+      action.includes('สร้างโครงการ') ||
+      action.includes('นำเข้า')
+    ) {
+      return history[i].at;
+    }
+  }
+  return history.length ? history[history.length - 1].at : null;
+}
+
+export function deriveProgressFromTabs(
+  project: Pick<
+    ProjectRecord,
+    | 'reference'
+    | 'agreed'
+    | 'docNo'
+    | 'docDate'
+    | 'vendor'
+    | 'due'
+    | 'projectDetails'
+    | 'files'
+    | 'status'
+    | 'manualStatusOverride'
+  >,
+  ignoreManualOverride: boolean = false,
+): { step: string; status: ProjectStatus; due: string } {
+  const details = project.projectDetails || {};
+  const files = project.files || [];
+
+  const hasTor = Boolean(
+    details.torOrderNo?.trim() ||
+      details.torOrderDate ||
+      details.torPreparedDate ||
+      details.torDate ||
+      details.referenceDate ||
+      details.torNo?.trim() ||
+      details.torNotes?.trim() ||
+      Number(project.reference) > 0 ||
+      (details.torMembers || []).some((m) => m.name?.trim()) ||
+      files.some((f) => f.category === 'tor'),
+  );
+
+  const hasOrder = Boolean(
+    project.docNo?.trim() ||
+      project.docDate ||
+      project.vendor?.trim() ||
+      Number(project.agreed) > 0 ||
+      details.deliveryDue ||
+      details.orderNotes?.trim() ||
+      files.some((f) => f.category === 'order'),
+  );
+
+  const hasAcceptance = Boolean(
+    details.committeeNo?.trim() ||
+      details.committeeDate ||
+      details.acceptanceNo?.trim() ||
+      (details.acceptanceMembers || []).some((m) => m.name?.trim()) ||
+      (details.acceptanceRounds || []).some(
+        (r) => r.date || r.result || r.notes?.trim(),
+      ) ||
+      files.some((f) => f.category === 'acceptance'),
+  );
+
+  const hasVoucher = Boolean(
+    details.voucherNo?.trim() ||
+      details.voucherDate ||
+      (details.voucherAmount !== '' &&
+        details.voucherAmount != null &&
+        Number(details.voucherAmount) > 0) ||
+      details.paymentDate ||
+      details.voucherNotes?.trim() ||
+      files.some((f) => f.category === 'voucher'),
+  );
+
+  let step = 's1';
+  if (hasVoucher) step = 's5';
+  else if (hasAcceptance) step = 's4';
+  else if (hasOrder) step = 's3';
+  else if (hasTor) step = 's2';
+
+  const due = details.deliveryDue || project.due || '';
+
+  if (
+    !ignoreManualOverride &&
+    (project.manualStatusOverride ||
+      project.status === 'พักงาน' ||
+      project.status === 'ยกเลิก')
+  ) {
+    return { step, status: project.status, due };
+  }
+
+  let status: ProjectStatus = 'รอจัดทำTOR และราคากลาง';
+  if (hasVoucher) {
+    status = details.paymentDate ? 'เสร็จสิ้น' : 'รออนุมัติ';
+  } else if (hasAcceptance) {
+    const completedRounds = (details.acceptanceRounds || []).filter((r) => r.result);
+    const latestResult = completedRounds[completedRounds.length - 1]?.result;
+    if (
+      latestResult === 'ไม่ผ่านการตรวจรับ' ||
+      latestResult === 'ให้แก้ไขก่อนตรวจรับ'
+    ) {
+      status = 'ส่งกลับแก้ไข';
+    } else if (latestResult === 'ตรวจรับถูกต้องครบถ้วน') {
+      status = 'รออนุมัติ';
+    } else {
+      status = 'กำลังดำเนินการ';
+    }
+  } else if (hasOrder) {
+    status = 'กำลังดำเนินการ';
+  } else if (hasTor) {
+    status = 'อยู่ระหว่างสั่งซื้อสั่งจ้าง';
+  }
+
+  return { step, status, due };
 }
 
 export function validateProject(
@@ -127,7 +273,10 @@ export function validateProject(
     errors.push('เลขทะเบียน/รหัสโครงการซ้ำในระบบ');
   }
 
-  if (!STATUSES.includes(project.status as ProjectStatus)) {
+  if (
+    !STATUSES.includes(project.status as ProjectStatus) &&
+    project.status !== 'รอดำเนินการ'
+  ) {
     errors.push('สถานะไม่ถูกต้อง');
   }
 
@@ -154,11 +303,7 @@ export function transitionProjectStep(
     throw new Error('ไม่พบขั้นตอน');
   }
 
-  const current = steps.find((s) => s.id === project.step);
-  if (current && !current.next.includes(nextStepId) && nextStepId !== project.step) {
-    throw new Error('เส้นทางนี้ไม่ได้รับอนุญาต');
-  }
-
+  const current = steps.find((s) => s.id === normalizeLegacyStepId(project.step));
   if (current && steps.indexOf(target) < steps.indexOf(current) && !reason.trim()) {
     throw new Error('กรุณาระบุเหตุผลส่งกลับ');
   }

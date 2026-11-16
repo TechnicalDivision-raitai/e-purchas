@@ -34,7 +34,8 @@ export const ADMIN_PASSWORD =
   '12345';
 
 export const STATUSES: ProjectStatus[] = [
-  'รอดำเนินการ',
+  'รอจัดทำTOR และราคากลาง',
+  'อยู่ระหว่างสั่งซื้อสั่งจ้าง',
   'กำลังดำเนินการ',
   'รออนุมัติ',
   'ส่งกลับแก้ไข',
@@ -160,30 +161,24 @@ export const TABLE_COLUMNS: Array<{
   { key: 'due', label: 'กำหนดเสร็จ', width: 112 },
 ];
 
-export const DEFAULT_STEP_NAMES: string[] = [
-  'รับคำขอซื้อ/ขอจ้าง',
-  'เตรียมรายละเอียดและเอกสาร',
-  'เสนอขออนุมัติดำเนินการ',
-  'ดำเนินการจัดซื้อจัดจ้าง',
-  'จัดทำสัญญา / ใบสั่ง',
-  'ส่งมอบและตรวจรับ',
-  'เตรียมเอกสารเบิกจ่าย',
-  'ปิดงาน',
-];
+export const DEFAULT_STEP_NAMES: string[] = PROJECT_TABS.map(
+  (tab, idx) => `${idx + 1}. ${tab.label}`,
+);
 
 export function createDefaultSteps(): WorkflowStep[] {
-  return DEFAULT_STEP_NAMES.map((name, i) => ({
-    id: `s${i + 1}`,
-    name,
-    next: [
-      ...(i > 0 ? [`s${i}`] : []),
-      ...(i < DEFAULT_STEP_NAMES.length - 1 ? [`s${i + 2}`] : []),
-    ],
-    roles: ['admin'],
-    required: [],
-    condition: 'ใช้กับโครงการตัวอย่างทุกประเภท',
-    documents: [],
-  }));
+  const allIds = DEFAULT_STEP_NAMES.map((_, i) => `s${i + 1}`);
+  return DEFAULT_STEP_NAMES.map((name, i) => {
+    const id = `s${i + 1}`;
+    return {
+      id,
+      name,
+      next: allIds.filter((otherId) => otherId !== id),
+      roles: ['admin'],
+      required: [],
+      condition: 'อ้างอิงตามแท็บหลักของโครงการ',
+      documents: [],
+    };
+  });
 }
 
 export function createSeedState(): ProcurementState {
@@ -223,7 +218,7 @@ export function createExampleRecord(firstStepId: string): ProjectRecord {
     docNo: 'PO-001',
     docDate: '2026-11-04',
     notes: 'รายละเอียดโครงการตัวอย่าง',
-    status: 'รอดำเนินการ',
+    status: 'รอจัดทำTOR และราคากลาง',
     step: firstStepId,
     ack: false,
     files: [],

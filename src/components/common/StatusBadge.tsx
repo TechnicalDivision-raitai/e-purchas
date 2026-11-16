@@ -1,6 +1,8 @@
 import type { ProjectStatus } from '../../types/procurement';
 
 const STATUS_STYLES: Record<ProjectStatus, string> = {
+  'รอจัดทำTOR และราคากลาง': 'bg-[#dce9fc] text-[#174896] border-[#a5c5f2]',
+  อยู่ระหว่างสั่งซื้อสั่งจ้าง: 'bg-[#e0f2fe] text-[#0369a1] border-[#7dd3fc]',
   รอดำเนินการ: 'bg-[#dce9fc] text-[#174896] border-[#a5c5f2]',
   กำลังดำเนินการ: 'bg-[#cde8ff] text-[#0b4f94] border-[#8ec6f5]',
   รออนุมัติ: 'bg-[#fff3dc] text-[#8f5f0c] border-[#e8c782]',

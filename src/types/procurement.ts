@@ -21,6 +21,8 @@ export type ProjectTabId =
   | 'voucher';
 
 export type ProjectStatus =
+  | 'รอจัดทำTOR และราคากลาง'
+  | 'อยู่ระหว่างสั่งซื้อสั่งจ้าง'
   | 'รอดำเนินการ'
   | 'กำลังดำเนินการ'
   | 'รออนุมัติ'
@@ -141,6 +143,9 @@ export interface ProjectRecord {
   status: ProjectStatus;
   step: string;
   ack: boolean;
+  ackAt?: string;
+  statusUpdatedAt?: string;
+  manualStatusOverride?: boolean;
   projectDetails: ProjectDetails;
   stageData: Record<string, StageDataEntry>;
   files: AttachmentFile[];

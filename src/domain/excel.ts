@@ -27,6 +27,7 @@ import {
   cleanCommitteeMembers,
   getAttachmentMeta,
   getTorPreparedDate,
+  normalizeLegacyStepId,
   validateProject,
 } from './procurement';
 
@@ -383,8 +384,8 @@ export function previewExcelImport(
       responsibleName: String(a[7] || '').trim(),
       start: String(a[8] || ''),
       notes: String(a[9] || ''),
-      status: (a[10] || existingRecord?.status || 'รอดำเนินการ') as ProjectStatus,
-      step: String(a[11] || existingRecord?.step || steps[0].id),
+      status: (a[10] || existingRecord?.status || 'รอจัดทำTOR และราคากลาง') as ProjectStatus,
+      step: normalizeLegacyStepId(String(a[11] || existingRecord?.step || steps[0].id)),
       department: existingRecord?.department || DEFAULT_DEPARTMENT,
       assignee: existingRecord?.assignee || userId,
       reference: 0,
@@ -506,7 +507,7 @@ export function previewExcelImport(
             });
           }
         } else if (sheetName === 'ข้อมูลขั้นตอน') {
-          const stepId = String(a[1] || '');
+          const stepId = normalizeLegacyStepId(String(a[1] || ''));
           if (!steps.some((v) => v.id === stepId)) {
             throw new Error('ไม่พบรหัสขั้นตอน');
           }

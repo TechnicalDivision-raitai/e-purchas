@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  createDefaultSteps,
   createSeedState,
   DEFAULT_VIEW_FILTER,
   PAGE_TITLES,
@@ -22,6 +23,7 @@ import {
   getResponsibleName,
   getUserName,
   isOverdueProject,
+  normalizeLegacyStepId,
   sortProjects,
 } from '../domain/procurement';
 import {
@@ -62,11 +64,25 @@ interface ProcurementContextValue {
 
 const ProcurementContext = createContext<ProcurementContextValue | null>(null);
 
+function normalizeLoadedState(raw: ProcurementState): ProcurementState {
+  return {
+    version: raw.version || 2,
+    steps: createDefaultSteps(),
+    rows: (raw.rows || []).map((r) => ({
+      ...r,
+      step: normalizeLegacyStepId(r.step),
+    })),
+  };
+}
+
 function loadInitialState(): { state: ProcurementState; error: string | null } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { state: createSeedState(), error: null };
-    return { state: JSON.parse(raw) as ProcurementState, error: null };
+    return {
+      state: normalizeLoadedState(JSON.parse(raw) as ProcurementState),
+      error: null,
+    };
   } catch {
     return {
       state: createSeedState(),
@@ -141,11 +157,11 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         const remote = await fetchProjectsFromGoogleSheet();
         if (remote) {
           setState((prev) => {
-            const next: ProcurementState = {
+            const next = normalizeLoadedState({
               version: prev.version,
-              steps: remote.steps || prev.steps,
+              steps: createDefaultSteps(),
               rows: remote.rows || prev.rows,
-            };
+            });
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
             } catch {
@@ -313,7 +329,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setState(JSON.parse(saved) as ProcurementState);
+        setState(normalizeLoadedState(JSON.parse(saved) as ProcurementState));
       }
       if (isGoogleSyncConfigured()) {
         await pullFromCloud(true);

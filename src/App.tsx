@@ -9,6 +9,7 @@ import { ProjectEditorModal } from './components/modals/ProjectEditorModal';
 import { ProjectViewModal } from './components/modals/ProjectViewModal';
 import { DashboardPage } from './components/pages/DashboardPage';
 import { ExcelPage } from './components/pages/ExcelPage';
+import { InboxPage } from './components/pages/InboxPage';
 import { ProjectsTablePanel } from './components/pages/ProjectsTablePanel';
 import { PAGE_TITLES } from './data/constants';
 import { ProcurementProvider, useProcurement } from './storage/useProcurementStore';
@@ -130,10 +131,18 @@ function WorkspaceShell() {
             />
           )}
 
-          {(page === 'register' || page === 'inbox' || page === 'overdue') && (
+          {page === 'inbox' && (
+            <InboxPage
+              rows={filteredRows}
+              onViewProject={(id) => handleOpenView(id)}
+              onCreateProject={handleOpenCreate}
+            />
+          )}
+
+          {(page === 'register' || page === 'overdue') && (
             <ProjectsTablePanel
               rows={filteredRows}
-              title={page === 'inbox' ? 'งานที่รอดำเนินการของคุณ' : 'รายการโครงการ'}
+              title="รายการโครงการ"
               onViewProject={(id) => handleOpenView(id)}
               onEditProject={(id) => handleOpenEdit(id)}
               onCreateProject={handleOpenCreate}

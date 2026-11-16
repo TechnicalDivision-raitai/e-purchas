@@ -26,11 +26,13 @@ import {
   MAX_PROJECT_ATTACHMENT_BYTES,
   PROJECT_TABS,
   PROJECT_TYPES,
+  STATUSES,
 } from '../../data/constants';
 import {
   cleanAcceptanceRounds,
   cleanCommitteeMembers,
   createAcceptanceDraft,
+  deriveProgressFromTabs,
   getAttachmentMeta,
   getResponsibleName,
   getTorPreparedDate,
@@ -48,6 +50,7 @@ import type {
   CommitteeMember,
   ProjectDetails,
   ProjectRecord,
+  ProjectStatus,
   ProjectTabId,
   ProjectType,
 } from '../../types/procurement';
@@ -93,6 +96,8 @@ interface DraftState {
   acceptanceMembers: CommitteeMember[];
   acceptanceRounds: AcceptanceRound[];
   files: AttachmentFile[];
+  statusMode: 'auto' | 'manual';
+  manualStatus: ProjectStatus;
 }
 
 function createDraftFromRecord(old: ProjectRecord | undefined): DraftState {
@@ -126,6 +131,13 @@ function createDraftFromRecord(old: ProjectRecord | undefined): DraftState {
     acceptanceMembers: acceptance.members,
     acceptanceRounds: acceptance.rounds,
     files: structuredClone(old?.files || []),
+    statusMode:
+      old?.manualStatusOverride ||
+      old?.status === 'พักงาน' ||
+      old?.status === 'ยกเลิก'
+        ? 'manual'
+        : 'auto',
+    manualStatus: old?.status || 'รอจัดทำTOR และราคากลาง',
   };
 }
 
@@ -174,6 +186,30 @@ export function ProjectEditorModal({
   const activeIndex = Math.max(
     0,
     PROJECT_TABS.findIndex((t) => t.id === activeTab),
+  );
+
+  const autoProgressPreview = useMemo(
+    () =>
+      deriveProgressFromTabs(
+        {
+          reference: Number(draft.reference) || 0,
+          agreed: Number(draft.agreed) || 0,
+          docNo: draft.docNo,
+          docDate: draft.docDate,
+          vendor: draft.vendor,
+          due: draft.details.deliveryDue || existing?.due || '',
+          projectDetails: {
+            ...draft.details,
+            torMembers: draft.torMembers,
+            acceptanceMembers: draft.acceptanceMembers,
+            acceptanceRounds: draft.acceptanceRounds,
+          },
+          files: draft.files,
+          status: existing?.status || 'รอจัดทำTOR และราคากลาง',
+        },
+        true,
+      ),
+    [draft, existing],
   );
 
   const suggestionPools = useMemo(() => {
@@ -372,7 +408,7 @@ export function ProjectEditorModal({
       const assignee = existing ? existing.assignee : user.id;
       const department = existing?.department || DEFAULT_DEPARTMENT;
 
-      const value: ProjectRecord = {
+      const baseRecord: ProjectRecord = {
         id: existing ? existing.id : '',
         year: Number(draft.year) || 2570,
         code: draft.code.trim(),
@@ -387,18 +423,39 @@ export function ProjectEditorModal({
         assignee,
         department,
         start: draft.start,
-        due: existing?.due || '',
+        due: details.deliveryDue || existing?.due || '',
         docNo: draft.docNo.trim(),
         docDate: draft.docDate,
         vendor: draft.vendor.trim(),
         notes: draft.notes,
-        status: existing?.status || 'รอดำเนินการ',
+        status: existing?.status || 'รอจัดทำTOR และราคากลาง',
         step: existing?.step || state.steps[0]?.id || 's1',
         ack: existing?.ack ?? false,
         stageData: existing?.stageData || {},
         history: existing?.history || [],
         projectDetails: details,
         files: draft.files,
+      };
+
+      const autoProgress = deriveProgressFromTabs(baseRecord, true);
+      const finalStatus: ProjectStatus =
+        draft.statusMode === 'manual' ? draft.manualStatus : autoProgress.status;
+      const nowIso = new Date().toISOString();
+      const statusChanged = !existing || existing.status !== finalStatus;
+
+      const value: ProjectRecord = {
+        ...baseRecord,
+        step: autoProgress.step,
+        status: finalStatus,
+        due: autoProgress.due,
+        ackAt: existing?.ackAt,
+        manualStatusOverride: draft.statusMode === 'manual',
+        statusUpdatedAt:
+          statusChanged ||
+          !existing?.statusUpdatedAt ||
+          (draft.statusMode === 'manual' && !existing?.manualStatusOverride)
+            ? nowIso
+            : existing.statusUpdatedAt,
       };
 
       const errors = validateProject(
@@ -419,6 +476,7 @@ export function ProjectEditorModal({
           Object.assign(current, value);
           if (before.assignee !== current.assignee) {
             current.ack = false;
+            current.ackAt = undefined;
           }
           const changedKeys = (
             [
@@ -437,6 +495,7 @@ export function ProjectEditorModal({
               'docNo',
               'docDate',
               'vendor',
+              'status',
             ] as const
           ).filter((k) => String(before[k]) !== String(value[k]));
           const detailsChanged =
@@ -456,6 +515,7 @@ export function ProjectEditorModal({
             ...value,
             id: uid(),
             ack: false,
+            ackAt: undefined,
             stageData: {},
             history: [],
           };
@@ -915,6 +975,43 @@ export function ProjectEditorModal({
                         }
                         className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
                       />
+                    </label>
+
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                      สถานะโครงการ
+                      <select
+                        value={
+                          draft.statusMode === 'auto' ? '__auto__' : draft.manualStatus
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__auto__') {
+                            setDraft((p) => ({ ...p, statusMode: 'auto' }));
+                          } else {
+                            setDraft((p) => ({
+                              ...p,
+                              statusMode: 'manual',
+                              manualStatus: val as ProjectStatus,
+                            }));
+                          }
+                        }}
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      >
+                        <option value="__auto__">
+                          อัตโนมัติตามข้อมูลแท็บ ({autoProgressPreview.status})
+                        </option>
+                        {draft.statusMode === 'manual' &&
+                          !STATUSES.includes(draft.manualStatus) && (
+                            <option value={draft.manualStatus}>
+                              กำหนดเอง: {draft.manualStatus}
+                            </option>
+                          )}
+                        {STATUSES.map((st) => (
+                          <option key={st} value={st}>
+                            กำหนดเอง: {st}
+                          </option>
+                        ))}
+                      </select>
                     </label>
 
                     <p className="col-span-full text-[11px] text-[#8aa0b7]">
@@ -1407,7 +1504,7 @@ export function ProjectEditorModal({
 
             <p className="mt-6 border-t border-[#cfe0f2] pt-4 text-[11px] leading-relaxed text-[#547091]">
               * ฟิลด์บังคับอยู่ในข้อมูลทั่วไป · ทุกแท็บบันทึกพร้อมกัน ·
-              หมวดเอกสารนี้แยกจากขั้นตอนดำเนินงาน
+              ระบบอ้างอิงขั้นตอนและสถานะงานตามแท็บหลักด้านบนอัตโนมัติ
             </p>
 
             {formError && (

@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Pencil,
   Printer,
+  RefreshCw,
   ShoppingCart,
   Trash2,
   Users,
@@ -20,30 +21,25 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react';
-import { PROJECT_TABS, STATUSES } from '../../data/constants';
+import { PROJECT_TABS } from '../../data/constants';
 import {
   canEditProject,
   createAcceptanceDraft,
   getResponsibleName,
+  getStatusUpdatedAt,
   getStepName,
   getTorPreparedDate,
-  getUserName,
-  transitionProjectStep,
 } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
 import type {
   AttachmentCategory,
   CommitteeMember,
-  ProjectStatus,
   ProjectTabId,
 } from '../../types/procurement';
-import {
-  formatThaiDate,
-  formatThaiDateTime,
-  isValidIsoDate,
-} from '../../utils/date';
+import { formatThaiDate, formatThaiDateTime } from '../../utils/date';
 import { formatMoney, triggerDownloadUrl } from '../../utils/format';
 import { StatusBadge } from '../common/StatusBadge';
+import { StatusTransitionModal } from './StatusTransitionModal';
 
 interface ProjectViewModalProps {
   projectId: string | null;
@@ -75,63 +71,38 @@ export function ProjectViewModal({
   );
 
   const [activeTab, setActiveTab] = useState<ProjectTabId>(initialTab);
-  const [nextStatus, setNextStatus] = useState<ProjectStatus>('รอดำเนินการ');
-  const [nextStep, setNextStep] = useState<string>('s1');
-  const [stageDocNo, setStageDocNo] = useState<string>('');
-  const [stageDocDate, setStageDocDate] = useState<string>('');
-  const [stageStart, setStageStart] = useState<string>('');
-  const [stageDue, setStageDue] = useState<string>('');
-  const [stageFinished, setStageFinished] = useState<string>('');
-  const [reason, setReason] = useState<string>('');
-  const [transitionError, setTransitionError] = useState<string>('');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [statusModalOpen, setStatusModalOpen] = useState<boolean>(false);
 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     setActiveTab(initialTab);
     setConfirmDeleteOpen(false);
+    setStatusModalOpen(false);
   }, [initialTab, projectId]);
-
-  useEffect(() => {
-    if (!project) return;
-    const sd = project.stageData?.[project.step];
-    setNextStatus(project.status);
-    setNextStep(project.step);
-    setStageDocNo(sd?.docNo || '');
-    setStageDocDate(sd?.docDate || '');
-    setStageStart(sd?.start || '');
-    setStageDue(sd?.due || '');
-    setStageFinished(sd?.finished || '');
-    setReason('');
-    setTransitionError('');
-  }, [project]);
 
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (confirmDeleteOpen) setConfirmDeleteOpen(false);
+        if (statusModalOpen) setStatusModalOpen(false);
+        else if (confirmDeleteOpen) setConfirmDeleteOpen(false);
         else onClose();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, confirmDeleteOpen]);
+  }, [onClose, confirmDeleteOpen, statusModalOpen]);
 
   if (!project) return null;
 
   const editable = canEditProject(user, project);
   const details = project.projectDetails || {};
   const acceptance = createAcceptanceDraft(details);
+  const statusUpdatedAt = getStatusUpdatedAt(project);
   const activeIndex = Math.max(
     0,
     PROJECT_TABS.findIndex((t) => t.id === activeTab),
-  );
-
-  const allowedNextSteps = state.steps.filter(
-    (s) =>
-      s.id === project.step ||
-      state.steps.find((x) => x.id === project.step)?.next.includes(s.id),
   );
 
   const formatAmountOrDash = (val: number | '' | undefined | null) =>
@@ -151,11 +122,13 @@ export function ProjectViewModal({
   };
 
   const handleAcknowledge = () => {
+    const nowIso = new Date().toISOString();
     const ok = commit((draft) => {
       const target = draft.rows.find((x) => x.id === project.id);
       if (!target) throw new Error('ไม่พบโครงการ');
       if (user.role !== 'admin') throw new Error('ไม่มีสิทธิ์รับทราบ');
       target.ack = true;
+      target.ackAt = nowIso;
       appendHistory(target, 'รับทราบงาน');
     });
     if (ok) showToast('รับทราบงานแล้ว');
@@ -166,86 +139,6 @@ export function ProjectViewModal({
     if (deleteProject(project.id)) {
       showToast(`ลบโครงการ ${code} แล้ว`);
       onClose();
-    }
-  };
-
-  const handleTransition = () => {
-    setTransitionError('');
-    try {
-      const next = transitionProjectStep(
-        project,
-        nextStep,
-        user,
-        state.steps,
-        reason,
-      );
-
-      if (['ส่งกลับแก้ไข', 'ยกเลิก'].includes(nextStatus) && !reason.trim()) {
-        throw new Error('กรุณาระบุเหตุผล');
-      }
-
-      if (
-        nextStatus === 'เสร็จสิ้น' &&
-        next.step !== state.steps[state.steps.length - 1].id
-      ) {
-        throw new Error('ต้องอยู่ขั้นตอนสุดท้ายก่อนปิดงาน');
-      }
-
-      const stageEntry = {
-        docNo: stageDocNo,
-        docDate: stageDocDate,
-        start: stageStart,
-        due: stageDue,
-        finished: stageFinished,
-      };
-
-      for (const dateVal of [
-        stageEntry.docDate,
-        stageEntry.start,
-        stageEntry.due,
-        stageEntry.finished,
-      ]) {
-        if (dateVal && !isValidIsoDate(dateVal)) {
-          throw new Error('วันที่ขั้นตอนไม่ถูกต้อง');
-        }
-      }
-
-      if (stageEntry.start && stageEntry.due && stageEntry.due < stageEntry.start) {
-        throw new Error('กำหนดเสร็จก่อนวันเริ่มขั้นตอน');
-      }
-
-      if (
-        stageEntry.start &&
-        stageEntry.finished &&
-        stageEntry.finished < stageEntry.start
-      ) {
-        throw new Error('วันเสร็จจริงก่อนวันเริ่มขั้นตอน');
-      }
-
-      const saved = commit((draft) => {
-        const target = draft.rows.find((x) => x.id === project.id);
-        if (!target) throw new Error('ไม่พบโครงการ');
-        target.stageData[target.step] = stageEntry;
-        const beforeSummary = `${target.status} / ${getStepName(
-          state.steps,
-          target.step,
-        )}`;
-        target.step = next.step;
-        target.status = nextStatus;
-        appendHistory(
-          target,
-          `เปลี่ยน ${beforeSummary} → ${nextStatus} / ${getStepName(
-            state.steps,
-            next.step,
-          )}${reason ? ` · ${reason}` : ''}`,
-        );
-      });
-
-      if (saved) {
-        showToast('บันทึกสถานะและขั้นตอนแล้ว');
-      }
-    } catch (err) {
-      setTransitionError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -385,9 +278,18 @@ export function ProjectViewModal({
             >
               {project.title}
             </h2>
-            <p className="mt-1 text-xs text-[#b8dcff] tabular-nums">
-              เลขทะเบียน {project.code} | ปีงบประมาณ พ.ศ. {project.year}
-            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[#b8dcff] tabular-nums">
+              <span>
+                เลขทะเบียน {project.code} | ปีงบประมาณ พ.ศ. {project.year} | ขั้นตอน:{' '}
+                {getStepName(state.steps, project.step)}
+              </span>
+              <StatusBadge status={project.status} />
+              {statusUpdatedAt && (
+                <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-[#dceeff]">
+                  อัปเดตล่าสุด {formatThaiDateTime(statusUpdatedAt)}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -402,6 +304,14 @@ export function ProjectViewModal({
 
             {editable && (
               <>
+                <button
+                  type="button"
+                  onClick={() => setStatusModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#34d399]/50 bg-[#0d9468] px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0a7a55]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  เปลี่ยนสถานะ
+                </button>
                 <button
                   type="button"
                   onClick={() => onOpenEdit(project.id, activeTab)}
@@ -637,209 +547,6 @@ export function ProjectViewModal({
               </section>
             ))}
           </div>
-
-          <div className="no-print mx-6 border-t border-[#c9dcf0] py-5">
-            <details>
-              <summary className="cursor-pointer text-xs font-semibold text-[#12427d]">
-                การดำเนินงานและประวัติ
-              </summary>
-
-              <div className="mt-4 space-y-5">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <StatusBadge status={project.status} />
-                  <span className="rounded border border-[#adc7e4] bg-[#e9f2fc] px-2 py-0.5 text-[11px] font-semibold text-[#1e4675]">
-                    {getStepName(state.steps, project.step)}
-                  </span>
-                  <span className="text-[11px] text-[#4c6a8d]">
-                    บัญชีกล่องงาน: {getUserName(project.assignee)} ·{' '}
-                    {project.ack ? 'รับทราบแล้ว' : 'รอรับทราบ'}
-                  </span>
-                </div>
-
-                <div>
-                  <div className="mb-2 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
-                    กระบวนการดำเนินงาน
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {state.steps.map((s) => (
-                      <span
-                        key={s.id}
-                        className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${
-                          project.step === s.id
-                            ? 'border-[#8ab5e4] bg-[#dcebfa] font-semibold text-[#0f489e]'
-                            : 'border-[#cfe0f2] bg-[#f1f6fd] text-[#3c5e85]'
-                        }`}
-                      >
-                        {s.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {editable && (
-                  <div className="space-y-3 rounded-xl border border-[#acc8e8] bg-[#edf4fc] p-4">
-                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        สถานะงาน
-                        <select
-                          value={nextStatus}
-                          onChange={(e) =>
-                            setNextStatus(e.target.value as ProjectStatus)
-                          }
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
-                        >
-                          {STATUSES.map((st) => (
-                            <option key={st} value={st}>
-                              {st}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        ขั้นตอนถัดไป / ส่งกลับ
-                        <select
-                          value={nextStep}
-                          onChange={(e) => setNextStep(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
-                        >
-                          {allowedNextSteps.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        เลขที่เอกสารของขั้นตอนปัจจุบัน
-                        <input
-                          type="text"
-                          value={stageDocNo}
-                          onChange={(e) => setStageDocNo(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
-                        />
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        วันที่เอกสารขั้นตอนปัจจุบัน
-                        <input
-                          type="date"
-                          value={stageDocDate}
-                          onChange={(e) => setStageDocDate(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
-                        />
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        วันเริ่มขั้นตอน
-                        <input
-                          type="date"
-                          value={stageStart}
-                          onChange={(e) => setStageStart(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
-                        />
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        กำหนดเสร็จขั้นตอน
-                        <input
-                          type="date"
-                          value={stageDue}
-                          onChange={(e) => setStageDue(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
-                        />
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        วันเสร็จจริงของขั้นตอน
-                        <input
-                          type="date"
-                          value={stageFinished}
-                          onChange={(e) => setStageFinished(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#153152]"
-                        />
-                      </label>
-
-                      <label className="block text-[11px] font-semibold text-[#23446b]">
-                        เหตุผล / บันทึกการดำเนินงาน
-                        <input
-                          type="text"
-                          value={reason}
-                          onChange={(e) => setReason(e.target.value)}
-                          className="mt-1 min-h-[38px] w-full rounded-md border border-[#adc7e4] bg-white px-2.5 py-1.5 text-xs text-[#153152]"
-                        />
-                      </label>
-                    </div>
-
-                    <p className="text-[11px] text-[#45668c]">
-                      เอกสารและวันที่ด้านบนบันทึกให้ขั้นตอนปัจจุบันก่อนเปลี่ยนไปขั้นตอนถัดไป
-                      การส่งกลับและยกเลิกต้องระบุเหตุผล
-                    </p>
-
-                    {transitionError && (
-                      <p role="alert" className="text-xs font-medium text-[#b52c2c]">
-                        {transitionError}
-                      </p>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleTransition}
-                      className="whitespace-nowrap rounded-lg bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-[#0b387d] hover:to-[#135ba4]"
-                    >
-                      บันทึกสถานะ / ขั้นตอน
-                    </button>
-                  </div>
-                )}
-
-                <div>
-                  <div className="mb-2.5 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
-                    ข้อมูลแต่ละขั้นตอนที่บันทึกไว้
-                  </div>
-                  {Object.keys(project.stageData || {}).length > 0 ? (
-                    <div className="space-y-2.5 text-xs text-[#314e70]">
-                      {Object.entries(project.stageData).map(([stepId, v]) => (
-                        <div key={stepId} className="rounded-md border border-[#cfe0f2] bg-[#f1f6fd] p-2.5">
-                          <div className="font-semibold text-[#113969]">
-                            {getStepName(state.steps, stepId)}
-                          </div>
-                          <div className="mt-1 text-[11px]">
-                            เอกสาร {v.docNo || '—'} / {formatThaiDate(v.docDate)}
-                          </div>
-                          <div className="text-[11px]">
-                            เริ่ม {formatThaiDate(v.start)} · กำหนด{' '}
-                            {formatThaiDate(v.due)} · เสร็จจริง{' '}
-                            {formatThaiDate(v.finished)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-[#597494]">
-                      ยังไม่มีข้อมูลขั้นตอนเพิ่มเติม
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <div className="mb-2.5 border-b border-[#d4e3f3] pb-1.5 text-xs font-semibold text-[#15457d]">
-                    ประวัติการดำเนินงาน
-                  </div>
-                  <div className="space-y-3 border-l-2 border-[#a7c6e8] pl-4">
-                    {[...(project.history || [])].reverse().map((h, i) => (
-                      <div key={i} className="text-xs">
-                        <p className="text-[#153152]">{h.action}</p>
-                        <small className="text-[11px] text-[#557191]">
-                          {h.by} · {formatThaiDateTime(h.at)}
-                        </small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </details>
-          </div>
         </div>
 
         <div className="no-print flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#bdd3ec] bg-[#eef5fd] px-6 py-4">
@@ -917,6 +624,10 @@ export function ProjectViewModal({
           </div>
         </div>
       )}
+      <StatusTransitionModal
+        project={statusModalOpen ? project : null}
+        onClose={() => setStatusModalOpen(false)}
+      />
     </div>
   );
 }
