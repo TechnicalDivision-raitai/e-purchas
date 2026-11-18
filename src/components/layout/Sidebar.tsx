@@ -1,4 +1,5 @@
 import {
+  ArrowDownToLine,
   ClockAlert,
   FileSpreadsheet,
   FolderKanban,
@@ -17,6 +18,7 @@ const NAV_ICONS: Record<PageId, typeof LayoutDashboard> = {
   inbox: Inbox,
   register: FolderKanban,
   overdue: ClockAlert,
+  saraban: ArrowDownToLine,
   excel: FileSpreadsheet,
 };
 
@@ -33,7 +35,7 @@ export function Sidebar({
   onSwitchUser,
   onLogout,
 }: SidebarProps) {
-  const { state, user, page, navigate } = useProcurement();
+  const { state, user, page, sarabanPendingCount, navigate, setInboxTab } = useProcurement();
   const isAdmin = user.role === 'admin';
 
   const inboxCount = getInboxProjects(state.rows, user.id).length;
@@ -135,15 +137,32 @@ export function Sidebar({
                     }`}
                   />
                   <span className="truncate">{item.label}</span>
-                  {count !== null && (
-                    <span
-                      className={`ml-auto grid h-6 min-w-[24px] place-items-center rounded-full px-1.5 text-[11px] tabular-nums ${
-                        selected
-                          ? 'bg-[#091c36] font-bold text-white shadow-inner'
-                          : 'border border-[#2f66a6] bg-[#0e325c] font-semibold text-[#c7e2ff]'
-                      }`}
-                    >
-                      {count}
+                  {(count !== null || (item.id === 'inbox' && sarabanPendingCount > 0)) && (
+                    <span className="ml-auto flex shrink-0 items-center gap-1">
+                      {item.id === 'inbox' && sarabanPendingCount > 0 && (
+                        <span
+                          title={`${sarabanPendingCount} เอกสารใหม่จากระบบสารบรรณรอตรวจสอบ`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInboxTab('saraban');
+                            handleNav('inbox');
+                          }}
+                          className="grid h-6 min-w-[26px] place-items-center rounded-full bg-[#fbbf24] px-1.5 text-[11px] font-bold tabular-nums text-[#091c36] shadow-xs ring-1 ring-[#fde68a]/60 transition hover:bg-[#fcd34d]"
+                        >
+                          +{sarabanPendingCount}
+                        </span>
+                      )}
+                      {count !== null && (
+                        <span
+                          className={`grid h-6 min-w-[24px] place-items-center rounded-full px-1.5 text-[11px] tabular-nums ${
+                            selected
+                              ? 'bg-[#091c36] font-bold text-white shadow-inner'
+                              : 'border border-[#2f66a6] bg-[#0e325c] font-semibold text-[#c7e2ff]'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
                     </span>
                   )}
                 </button>

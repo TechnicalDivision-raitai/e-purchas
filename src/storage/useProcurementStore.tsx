@@ -18,7 +18,9 @@ import {
   USERS,
   VIEW_STORAGE_KEY,
 } from '../data/constants';
+import { SARABAN_CATEGORY_META } from '../data/constants';
 import {
+  applySarabanQueueItemToProject,
   getInboxProjects,
   getResponsibleName,
   getUserName,
@@ -27,28 +29,39 @@ import {
   sortProjects,
 } from '../domain/procurement';
 import {
+  deleteSarabanQueueItem,
   fetchProjectsFromGoogleSheet,
+  fetchSarabanQueue,
   isGoogleSyncConfigured,
+  reviewSarabanQueueItem,
   syncProjectsToGoogleSheet,
 } from '../services/googleSync';
 import type {
   PageId,
   ProcurementState,
   ProjectRecord,
+  SarabanQueueItem,
   SyncState,
   UserAccount,
   ViewFilter,
 } from '../types/procurement';
+import { normalizeCodeKey } from '../utils/format';
 
 interface ProcurementContextValue {
   state: ProcurementState;
   user: UserAccount;
   authenticatedUser: UserAccount | null;
   page: PageId;
+  inboxTab: 'projects' | 'saraban';
+  setInboxTab: (tab: 'projects' | 'saraban') => void;
   viewFilter: ViewFilter;
   filteredRows: ProjectRecord[];
   toastMessage: string | null;
   syncState: SyncState;
+  sarabanQueue: SarabanQueueItem[];
+  sarabanPendingCount: number;
+  sarabanQueueLoading: boolean;
+  sarabanQueueError: string | null;
   login: (account: UserAccount) => void;
   logout: () => void;
   setUserById: (id: string) => void;
@@ -58,6 +71,16 @@ interface ProcurementContextValue {
   commit: (mutator: (draft: ProcurementState) => void) => boolean;
   deleteProject: (id: string) => boolean;
   refreshFromStorage: () => Promise<void>;
+  refreshSarabanQueue: (notifyOnSuccess?: boolean) => Promise<void>;
+  approveSarabanQueueItem: (
+    item: SarabanQueueItem,
+    overrideProjectId?: string,
+  ) => Promise<boolean>;
+  rejectSarabanQueueItem: (
+    item: SarabanQueueItem,
+    rejectReason: string,
+  ) => Promise<boolean>;
+  removeSarabanQueueItem: (item: SarabanQueueItem) => Promise<boolean>;
   showToast: (message: string) => void;
   appendHistory: (project: ProjectRecord, action: string) => void;
 }
@@ -223,6 +246,7 @@ function loadInitialViews(): Record<string, ViewFilter> {
 
 function parseHashPage(): PageId {
   const hash = window.location.hash.slice(1) as PageId;
+  if (hash === 'saraban') return 'inbox';
   return PAGE_TITLES[hash] ? hash : 'dashboard';
 }
 
@@ -234,13 +258,23 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     loadSessionUser,
   );
   const [page, setPage] = useState<PageId>(parseHashPage);
+  const [inboxTab, setInboxTab] = useState<'projects' | 'saraban'>(() =>
+    window.location.hash.slice(1) === 'saraban' ? 'saraban' : 'projects',
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(initial.error);
   const [syncState, setSyncState] = useState<SyncState>(() =>
     isGoogleSyncConfigured() ? 'idle' : 'local',
   );
+  const [sarabanQueue, setSarabanQueue] = useState<SarabanQueueItem[]>([]);
+  const [sarabanQueueLoading, setSarabanQueueLoading] = useState<boolean>(false);
+  const [sarabanQueueError, setSarabanQueueError] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
   const user = authenticatedUser || USERS[1];
+  const sarabanPendingCount = useMemo(
+    () => sarabanQueue.filter((q) => q.queueStatus === 'pending').length,
+    [sarabanQueue],
+  );
 
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
@@ -264,9 +298,12 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         const remote = await fetchProjectsFromGoogleSheet();
         if (remote) {
           setState((prev) => {
-            const mergedRows = remote.rows
-              ? mergeLocalFileBlobs(remote.rows, prev.rows)
-              : prev.rows;
+            const remoteHasRows = Array.isArray(remote.rows) && remote.rows.length > 0;
+            const mergedRows = remoteHasRows
+              ? mergeLocalFileBlobs(remote.rows!, prev.rows)
+              : prev.rows.length > 0
+                ? prev.rows
+                : remote.rows || prev.rows;
             const next = normalizeLoadedState({
               version: prev.version,
               steps: createDefaultSteps(),
@@ -322,11 +359,40 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshSarabanQueue = useCallback(
+    async (notifyOnSuccess = false) => {
+      if (!isGoogleSyncConfigured()) {
+        setSarabanQueue([]);
+        setSarabanQueueError(null);
+        return;
+      }
+      setSarabanQueueLoading(true);
+      setSarabanQueueError(null);
+      try {
+        const res = await fetchSarabanQueue('all');
+        setSarabanQueue(res.data);
+        if (notifyOnSuccess) {
+          showToast(`โหลดคิวจากสารบรรณแล้ว (${res.pendingCount} รายการรออนุมัติ)`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setSarabanQueueError(msg);
+        if (notifyOnSuccess) {
+          showToast(`ดึงคิวจากสารบรรณไม่สำเร็จ: ${msg}`);
+        }
+      } finally {
+        setSarabanQueueLoading(false);
+      }
+    },
+    [showToast],
+  );
+
   useEffect(() => {
     if (authenticatedUser && isGoogleSyncConfigured()) {
       void pullFromCloud(false);
+      void refreshSarabanQueue(false);
     }
-  }, [authenticatedUser, pullFromCloud]);
+  }, [authenticatedUser, pullFromCloud, refreshSarabanQueue]);
 
   useEffect(() => {
     if (initial.error) {
@@ -341,6 +407,12 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onHashChange = () => {
+      const rawHash = window.location.hash.slice(1) as PageId;
+      if (rawHash === 'saraban') {
+        setInboxTab('saraban');
+        setPage('inbox');
+        return;
+      }
       setPage(parseHashPage());
     };
     window.addEventListener('hashchange', onHashChange);
@@ -348,6 +420,14 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const navigate = useCallback((nextPage: PageId) => {
+    if (nextPage === 'saraban') {
+      setInboxTab('saraban');
+      if (window.location.hash.slice(1) !== 'inbox') {
+        window.location.hash = 'inbox';
+      }
+      setPage('inbox');
+      return;
+    }
     const validPage = PAGE_TITLES[nextPage] ? nextPage : 'dashboard';
     if (window.location.hash.slice(1) !== validPage) {
       window.location.hash = validPage;
@@ -458,13 +538,14 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
       }
       if (isGoogleSyncConfigured()) {
         await pullFromCloud(true);
+        await refreshSarabanQueue(false);
       } else {
         showToast('รีเฟรชข้อมูลแล้ว');
       }
     } catch (err) {
       showToast(`อ่านข้อมูลไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [pullFromCloud, showToast]);
+  }, [pullFromCloud, refreshSarabanQueue, showToast]);
 
   const appendHistory = useCallback(
     (project: ProjectRecord, action: string) => {
@@ -506,15 +587,169 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     return sortProjects(matched, viewFilter.sort, viewFilter.dir);
   }, [page, state.rows, user.id, viewFilter]);
 
+  const approveSarabanQueueItem = useCallback(
+    async (item: SarabanQueueItem, overrideProjectId?: string): Promise<boolean> => {
+      if (user.role !== 'admin') {
+        showToast('ไม่มีสิทธิ์อนุมัติรับข้อมูลเข้าโครงการ');
+        return false;
+      }
+
+      const targetProject =
+        (overrideProjectId
+          ? state.rows.find((r) => r.id === overrideProjectId)
+          : undefined) ||
+        (item.procurementId
+          ? state.rows.find((r) => r.id === item.procurementId)
+          : undefined) ||
+        (item.projectCode
+          ? state.rows.find(
+              (r) => normalizeCodeKey(r.code) === normalizeCodeKey(item.projectCode),
+            )
+          : undefined);
+
+      if (!targetProject) {
+        showToast('ไม่พบโครงการปลายทาง กรุณาเลือกโครงการก่อนอนุมัติ');
+        return false;
+      }
+
+      try {
+        await reviewSarabanQueueItem({
+          queueId: item.queueId,
+          idempotencyKey: item.idempotencyKey,
+          queueStatus: 'approved',
+          reviewedBy: user.name,
+        });
+      } catch (err) {
+        showToast(
+          `อัปเดตคิวสารบรรณไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      }
+
+      const meta = SARABAN_CATEGORY_META[item.docCategory];
+      const ok = commit((draft) => {
+        const target = draft.rows.find((r) => r.id === targetProject.id);
+        if (!target) throw new Error('ไม่พบโครงการปลายทาง');
+        applySarabanQueueItemToProject(target, item);
+        target.history.push({
+          at: new Date().toISOString(),
+          by: user.name,
+          action: `รับข้อมูลจากสารบรรณ (${meta.label}) เลขที่ ${item.bookNo || item.queueId}`,
+        });
+      });
+
+      if (ok) {
+        const nowIso = new Date().toISOString();
+        setSarabanQueue((prev) =>
+          prev.map((q) =>
+            q.queueId === item.queueId
+              ? {
+                  ...q,
+                  queueStatus: 'approved',
+                  reviewedBy: user.name,
+                  reviewedAt: nowIso,
+                  rejectReason: '',
+                }
+              : q,
+          ),
+        );
+        showToast(`อนุมัติรับ ${meta.label} เข้าโครงการ ${targetProject.code} แล้ว`);
+      }
+
+      return ok;
+    },
+    [user.role, user.name, state.rows, commit, showToast],
+  );
+
+  const rejectSarabanQueueItem = useCallback(
+    async (item: SarabanQueueItem, rejectReason: string): Promise<boolean> => {
+      if (user.role !== 'admin') {
+        showToast('ไม่มีสิทธิ์ปฏิเสธรายการคิว');
+        return false;
+      }
+      const cleanReason = rejectReason.trim();
+      if (!cleanReason) {
+        showToast('กรุณาระบุเหตุผลการปฏิเสธ / ส่งกลับ');
+        return false;
+      }
+      try {
+        await reviewSarabanQueueItem({
+          queueId: item.queueId,
+          idempotencyKey: item.idempotencyKey,
+          queueStatus: 'rejected',
+          reviewedBy: user.name,
+          rejectReason: cleanReason,
+        });
+        const nowIso = new Date().toISOString();
+        setSarabanQueue((prev) =>
+          prev.map((q) =>
+            q.queueId === item.queueId
+              ? {
+                  ...q,
+                  queueStatus: 'rejected',
+                  reviewedBy: user.name,
+                  reviewedAt: nowIso,
+                  rejectReason: cleanReason,
+                }
+              : q,
+          ),
+        );
+        showToast(`ปฏิเสธคิว ${item.queueId} และส่งสถานะกลับสารบรรณแล้ว`);
+        return true;
+      } catch (err) {
+        showToast(
+          `ปฏิเสธคิวไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      }
+    },
+    [user.role, user.name, showToast],
+  );
+
+  const removeSarabanQueueItem = useCallback(
+    async (item: SarabanQueueItem): Promise<boolean> => {
+      if (user.role !== 'admin') {
+        showToast('ไม่มีสิทธิ์ลบรายการคิว');
+        return false;
+      }
+      try {
+        await deleteSarabanQueueItem(item.queueId, item.idempotencyKey);
+        setSarabanQueue((prev) =>
+          prev.filter(
+            (q) =>
+              !(
+                (item.queueId && q.queueId === item.queueId) ||
+                (item.idempotencyKey && q.idempotencyKey === item.idempotencyKey)
+              ),
+          ),
+        );
+        showToast(`ลบคิว ${item.queueId || item.idempotencyKey} ออกจากระบบแล้ว`);
+        return true;
+      } catch (err) {
+        showToast(
+          `ลบคิวไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      }
+    },
+    [user.role, showToast],
+  );
+
   const value: ProcurementContextValue = {
     state,
     user,
     authenticatedUser,
     page,
+    inboxTab,
+    setInboxTab,
     viewFilter,
     filteredRows,
     toastMessage,
     syncState,
+    sarabanQueue,
+    sarabanPendingCount,
+    sarabanQueueLoading,
+    sarabanQueueError,
     login,
     logout,
     setUserById,
@@ -524,6 +759,10 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     commit,
     deleteProject,
     refreshFromStorage,
+    refreshSarabanQueue,
+    approveSarabanQueueItem,
+    rejectSarabanQueueItem,
+    removeSarabanQueueItem,
     showToast,
     appendHistory,
   };

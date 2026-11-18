@@ -1,4 +1,5 @@
 import {
+  ArrowDownToLine,
   CheckCircle2,
   Eye,
   Inbox,
@@ -14,14 +15,15 @@ import {
   isOverdueProject,
 } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
-import type { ProjectRecord } from '../../types/procurement';
+import type { ProjectRecord, ProjectTabId } from '../../types/procurement';
 import { formatThaiDate, formatThaiDateTime } from '../../utils/date';
 import { StatusBadge } from '../common/StatusBadge';
 import { StatusTransitionModal } from '../modals/StatusTransitionModal';
+import { SarabanQueuePage } from './SarabanQueuePage';
 
 interface InboxPageProps {
   rows: ProjectRecord[];
-  onViewProject: (id: string) => void;
+  onViewProject: (id: string, tab?: ProjectTabId) => void;
   onCreateProject?: () => void;
 }
 
@@ -30,7 +32,16 @@ export function InboxPage({
   onViewProject,
   onCreateProject,
 }: InboxPageProps) {
-  const { state, user, commit, appendHistory, showToast } = useProcurement();
+  const {
+    state,
+    user,
+    inboxTab,
+    setInboxTab,
+    sarabanPendingCount,
+    commit,
+    appendHistory,
+    showToast,
+  } = useProcurement();
   const isAdmin = user.role === 'admin';
 
   const [statusModalProjectId, setStatusModalProjectId] = useState<string | null>(null);
@@ -74,22 +85,70 @@ export function InboxPage({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[#b8d0eb] bg-white shadow-xs">
-      <div className="border-b border-[#d4e3f3] bg-gradient-to-r from-[#f8fbff] via-[#f1f7fe] to-[#e7f1fc] px-6 py-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#96c4ea] bg-[#e0f2fe]">
-            <Inbox className="h-4 w-4 text-[#0f5bb5]" />
-          </span>
-          <h2 className="text-[16px] font-bold tracking-tight text-[#0f2d52]">
-            กล่องงานของฉัน (My Inbox)
-          </h2>
-          <span className="rounded-full border border-[#65a9eb] bg-[#e6f2ff] px-3 py-0.5 text-[11.5px] font-semibold tabular-nums text-[#0f4ca6] shadow-[0_0_10px_rgba(37,125,224,0.18)]">
-            {prioritizedRows.length} รายการ
-          </span>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#d4e3f3] bg-gradient-to-r from-[#f8fbff] via-[#f3f8fe] to-[#ecf4fd] px-6 py-5">
+        <div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#96c4ea] bg-[#e0f2fe]">
+              <Inbox className="h-4 w-4 text-[#0d825b]" />
+            </span>
+            <h2 className="text-[16px] font-bold tracking-tight text-[#0f2d52]">
+              กล่องงานของฉัน (My Inbox)
+            </h2>
+          </div>
+          <p className="mt-1.5 text-xs text-[#4b698c]">
+            {inboxTab === 'saraban'
+              ? 'รายการเอกสารที่ส่งซิงค์มาจากระบบสารบรรณ รอตรวจสอบและกดยืนยันรับเข้าสู่ทะเบียนโครงการ'
+              : 'รายการโครงการและงานสำคัญที่ต้องรับทราบและกำกับดูแล กดรับทราบงานและปรับสถานะได้ทันที'}
+          </p>
         </div>
-        <p className="mt-1.5 text-xs text-[#4b698c]">
-          รายการโครงการและงานสำคัญที่ต้องรับทราบและกำกับดูแล กดรับทราบงานและปรับสถานะได้ทันที
-        </p>
+
+        <div
+          role="tablist"
+          aria-label="มุมมองกล่องงานของฉัน"
+          className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-[#c8dcf0] bg-[#eef5fc] p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={inboxTab === 'projects'}
+            onClick={() => setInboxTab('projects')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12px] transition ${
+              inboxTab === 'projects'
+                ? 'bg-white font-bold text-[#0f2d52] shadow-xs'
+                : 'font-semibold text-[#4b6789] hover:text-[#12396b]'
+            }`}
+          >
+            <span>โครงการที่ดูแล ({prioritizedRows.length})</span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={inboxTab === 'saraban'}
+            onClick={() => setInboxTab('saraban')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12px] transition ${
+              inboxTab === 'saraban'
+                ? 'bg-white font-bold text-[#0d825b] shadow-xs'
+                : sarabanPendingCount > 0
+                  ? 'font-semibold text-[#0d825b] hover:bg-white/60'
+                  : 'font-semibold text-[#4b6789] hover:text-[#12396b]'
+            }`}
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5 shrink-0" />
+            <span>คิวรับจากสารบรรณ ({sarabanPendingCount})</span>
+            {sarabanPendingCount > 0 && inboxTab !== 'saraban' && (
+              <span className="ml-0.5 grid h-4 min-w-[18px] place-items-center rounded-full bg-[#fbbf24] px-1 text-[10px] font-bold tabular-nums text-[#091c36]">
+                +{sarabanPendingCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
+
+      {inboxTab === 'saraban' ? (
+        <SarabanQueuePage onViewProject={onViewProject} />
+      ) : (
+        <>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] table-fixed border-collapse text-left text-xs">
@@ -287,6 +346,8 @@ export function InboxPage({
         project={statusModalProject}
         onClose={() => setStatusModalProjectId(null)}
       />
+        </>
+      )}
     </section>
   );
 }

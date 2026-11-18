@@ -1,7 +1,11 @@
+import { SARABAN_ALLOWED_CATEGORIES } from '../data/constants';
 import type {
   AttachmentCategory,
   ProcurementState,
   ProjectRecord,
+  SarabanDocCategory,
+  SarabanQueueItem,
+  SarabanQueueStatus,
   WorkflowStep,
 } from '../types/procurement';
 
@@ -170,4 +174,147 @@ export async function uploadFileToGoogleDrive(
     url: fileUrl,
     driveFileId: payload.fileId || payload.id,
   };
+}
+
+interface SarabanQueueResponse {
+  status?: string;
+  success?: boolean;
+  pendingCount?: number;
+  data?: Array<Partial<SarabanQueueItem>>;
+  error?: string;
+  message?: string;
+}
+
+function isAllowedSarabanCategory(cat: unknown): cat is SarabanDocCategory {
+  return SARABAN_ALLOWED_CATEGORIES.includes(cat as SarabanDocCategory);
+}
+
+export async function fetchSarabanQueue(
+  queueStatus: SarabanQueueStatus | 'all' = 'all',
+): Promise<{ pendingCount: number; data: SarabanQueueItem[] }> {
+  if (!DEFAULT_GOOGLE_SCRIPT_URL) {
+    return { pendingCount: 0, data: [] };
+  }
+
+  const url = new URL(DEFAULT_GOOGLE_SCRIPT_URL);
+  url.searchParams.set('action', 'getProcurementQueue');
+  url.searchParams.set('queueStatus', queueStatus);
+  url.searchParams.set('t', String(Date.now()));
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    throw new Error(`ดึงคิวจากสารบรรณไม่สำเร็จ (HTTP ${response.status})`);
+  }
+
+  const payload = (await response.json()) as SarabanQueueResponse;
+  if (payload.error || payload.status === 'error') {
+    throw new Error(payload.error || payload.message || 'ดึงคิวจากสารบรรณไม่สำเร็จ');
+  }
+
+  const rawList = Array.isArray(payload.data) ? payload.data : [];
+  const data: SarabanQueueItem[] = rawList
+    .filter((item) => isAllowedSarabanCategory(item.docCategory))
+    .map((item) => ({
+      queueId: String(item.queueId || ''),
+      idempotencyKey: String(item.idempotencyKey || ''),
+      procurementId: String(item.procurementId || ''),
+      projectCode: String(item.projectCode || ''),
+      fiscalYear: Number(item.fiscalYear || 0),
+      docCategory: item.docCategory as SarabanDocCategory,
+      bookNo: String(item.bookNo || ''),
+      bookDate: String(item.bookDate || '').slice(0, 10),
+      subject: String(item.subject || ''),
+      payload: item.payload || {},
+      attachment: item.attachment || null,
+      queueStatus: (item.queueStatus || 'pending') as SarabanQueueStatus,
+      reviewedBy: String(item.reviewedBy || ''),
+      reviewedAt: String(item.reviewedAt || ''),
+      rejectReason: String(item.rejectReason || ''),
+      createdAt: String(item.createdAt || ''),
+      submittedBy: String(item.submittedBy || ''),
+    }));
+
+  const pendingCount =
+    typeof payload.pendingCount === 'number'
+      ? payload.pendingCount
+      : data.filter((item) => item.queueStatus === 'pending').length;
+
+  return { pendingCount, data };
+}
+
+export async function reviewSarabanQueueItem(params: {
+  queueId: string;
+  idempotencyKey?: string;
+  queueStatus: 'approved' | 'rejected';
+  reviewedBy: string;
+  rejectReason?: string;
+}): Promise<boolean> {
+  if (!DEFAULT_GOOGLE_SCRIPT_URL) return false;
+
+  const response = await fetch(DEFAULT_GOOGLE_SCRIPT_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify({
+      action: 'reviewProcurementQueue',
+      queueId: params.queueId,
+      idempotencyKey: params.idempotencyKey || '',
+      queueStatus: params.queueStatus,
+      reviewedBy: params.reviewedBy,
+      reviewedAt: new Date().toISOString(),
+      rejectReason: params.rejectReason || '',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`อัปเดตสถานะคิวสารบรรณไม่สำเร็จ (HTTP ${response.status})`);
+  }
+
+  const payload = (await response.json()) as SarabanQueueResponse;
+  if (payload.error || payload.status === 'error') {
+    throw new Error(
+      payload.error || payload.message || 'อัปเดตสถานะคิวสารบรรณไม่สำเร็จ',
+    );
+  }
+
+  return true;
+}
+
+export async function deleteSarabanQueueItem(
+  queueId: string,
+  idempotencyKey?: string,
+): Promise<boolean> {
+  if (!DEFAULT_GOOGLE_SCRIPT_URL) return false;
+
+  const response = await fetch(DEFAULT_GOOGLE_SCRIPT_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify({
+      action: 'deleteProcurementQueue',
+      queueId,
+      idempotencyKey: idempotencyKey || '',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`ลบคิวจากสารบรรณไม่สำเร็จ (HTTP ${response.status})`);
+  }
+
+  const payload = (await response.json()) as SarabanQueueResponse & {
+    deleted?: boolean;
+  };
+  if (payload.error || payload.status === 'error') {
+    throw new Error(payload.error || payload.message || 'ลบคิวจากสารบรรณไม่สำเร็จ');
+  }
+
+  return true;
 }

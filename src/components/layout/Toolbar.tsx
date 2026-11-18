@@ -4,9 +4,14 @@ import { useProcurement } from '../../storage/useProcurementStore';
 import { currentFiscalYear } from '../../utils/date';
 
 export function Toolbar() {
-  const { state, page, viewFilter, updateViewFilter, refreshFromStorage } = useProcurement();
+  const { state, page, inboxTab, viewFilter, updateViewFilter, refreshFromStorage } =
+    useProcurement();
 
-  if (page === 'excel') {
+  if (
+    page === 'excel' ||
+    page === 'saraban' ||
+    (page === 'inbox' && inboxTab === 'saraban')
+  ) {
     return null;
   }
 

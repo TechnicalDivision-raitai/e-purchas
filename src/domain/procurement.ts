@@ -3,6 +3,8 @@ import {
   COMMITTEE_ROLES,
   MAX_PROJECT_ATTACHMENT_BYTES,
   PROJECT_TYPES,
+  SARABAN_ALLOWED_CATEGORIES,
+  SARABAN_CATEGORY_META,
   STATUSES,
   TERMINAL_STATUSES,
   USERS,
@@ -15,13 +17,14 @@ import type {
   ProjectDetails,
   ProjectRecord,
   ProjectStatus,
+  SarabanQueueItem,
   SortDirection,
   SortKey,
   UserAccount,
   VoucherEntry,
   WorkflowStep,
 } from '../types/procurement';
-import { isValidIsoDate, todayBangkok } from '../utils/date';
+import { isValidIsoDate, todayBangkok, uid } from '../utils/date';
 import { normalizeCodeKey } from '../utils/format';
 
 export function isTerminalStatus(status: ProjectStatus | string): boolean {
@@ -746,4 +749,191 @@ export function createAcceptanceDraft(details: ProjectDetails = {}): {
     deliveries: structuredClone(deliveries),
     rounds: structuredClone(rounds),
   };
+}
+
+function appendUniqueNoteLine(existing: string | undefined, line: string): string {
+  const cleanLine = line.trim();
+  if (!cleanLine) return existing || '';
+  const current = String(existing || '').trim();
+  if (!current) return cleanLine;
+  if (current.includes(cleanLine)) return current;
+  return `${current}\n${cleanLine}`;
+}
+
+export function applySarabanQueueItemToProject(
+  target: ProjectRecord,
+  item: SarabanQueueItem,
+): void {
+  if (!SARABAN_ALLOWED_CATEGORIES.includes(item.docCategory)) {
+    throw new Error('หมวดเอกสารจากสารบรรณไม่รองรับในระบบจัดซื้อจัดจ้าง');
+  }
+
+  target.projectDetails ??= {};
+  target.files ??= [];
+  const d = target.projectDetails;
+  const payload = item.payload || {};
+  const meta = SARABAN_CATEGORY_META[item.docCategory];
+  const bookDate = isValidIsoDate(item.bookDate) ? item.bookDate : '';
+  const refLabel = [item.bookNo, item.subject].filter(Boolean).join(' · ');
+
+  if (item.docCategory === 'tor_order') {
+    if (item.bookNo) d.torOrderNo = item.bookNo;
+    if (bookDate) d.torOrderDate = bookDate;
+    const assigneeName = String(payload.assigneeName || '').trim();
+    if (assigneeName) {
+      d.torMembers ??= [];
+      const alreadyHas = d.torMembers.some(
+        (m) => m.name.trim() === assigneeName,
+      );
+      if (!alreadyHas) {
+        const blankRow = d.torMembers.find((m) => !m.name.trim());
+        if (blankRow) {
+          blankRow.name = assigneeName;
+        } else {
+          d.torMembers.push({
+            name: assigneeName,
+            position: '',
+            role: d.torMembers.length === 0 ? 'ประธานกรรมการ' : 'กรรมการ',
+          });
+        }
+      }
+    }
+    const extraNotes = [payload.notes, refLabel].filter(Boolean).join(' — ');
+    if (extraNotes) {
+      d.torNotes = appendUniqueNoteLine(d.torNotes, `[คำสั่ง TOR] ${extraNotes}`);
+    }
+  } else if (item.docCategory === 'tor_approval') {
+    if (item.bookNo) d.torNo = item.bookNo;
+    if (bookDate) {
+      d.torPreparedDate = bookDate;
+      d.torDate = bookDate;
+    }
+    if (payload.torAuthor) d.torAuthor = String(payload.torAuthor).trim();
+    const extraDetails = [
+      payload.torAuthor ? `ผู้จัดทำ: ${payload.torAuthor}` : '',
+      payload.details,
+      refLabel,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    if (extraDetails) {
+      d.torNotes = appendUniqueNoteLine(d.torNotes, `[อนุมัติ TOR] ${extraDetails}`);
+    }
+  } else if (item.docCategory === 'ref_price') {
+    const refPrice = Number(payload.refPrice);
+    if (Number.isFinite(refPrice) && refPrice > 0) {
+      target.reference = refPrice;
+    }
+    if (bookDate) {
+      d.referenceDate = bookDate;
+      if (!d.torPreparedDate) d.torPreparedDate = bookDate;
+    }
+    const extraDetails = [
+      Number.isFinite(refPrice) && refPrice > 0
+        ? `ราคากลาง ${refPrice.toLocaleString('en-US')} บาท`
+        : '',
+      payload.details,
+      refLabel,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    if (extraDetails) {
+      d.torNotes = appendUniqueNoteLine(d.torNotes, `[ราคากลาง] ${extraDetails}`);
+    }
+  } else if (item.docCategory === 'disbursement') {
+    const round =
+      Number.isInteger(Number(payload.installment)) && Number(payload.installment) >= 1
+        ? Number(payload.installment)
+        : 1;
+    const voucherNo = String(payload.voucherNo || item.bookNo || '').trim();
+    const amount =
+      payload.amount != null && Number.isFinite(Number(payload.amount))
+        ? Number(payload.amount)
+        : ('' as const);
+    const paymentDate =
+      payload.status === 'paid' ? bookDate || todayBangkok() : '';
+    const voucherNotes = [item.subject, item.bookNo ? `อ้างอิง ${item.bookNo}` : '']
+      .filter(Boolean)
+      .join(' · ');
+
+    const entries = getEffectiveVoucherEntries(d);
+    const existingIdx = entries.findIndex(
+      (v) =>
+        v.round === round &&
+        ((voucherNo && v.voucherNo === voucherNo) ||
+          (!v.voucherNo && !v.voucherDate && v.voucherAmount === '')),
+    );
+
+    const nextEntry: VoucherEntry = {
+      round,
+      voucherNo,
+      voucherDate: bookDate,
+      voucherAmount: amount,
+      paymentDate,
+      voucherNotes,
+    };
+
+    if (existingIdx >= 0) {
+      entries[existingIdx] = {
+        ...entries[existingIdx],
+        ...nextEntry,
+        voucherNo: nextEntry.voucherNo || entries[existingIdx].voucherNo,
+        voucherDate: nextEntry.voucherDate || entries[existingIdx].voucherDate,
+        voucherAmount:
+          nextEntry.voucherAmount !== ''
+            ? nextEntry.voucherAmount
+            : entries[existingIdx].voucherAmount,
+        paymentDate: nextEntry.paymentDate || entries[existingIdx].paymentDate,
+        voucherNotes: appendUniqueNoteLine(
+          entries[existingIdx].voucherNotes,
+          voucherNotes,
+        ),
+      };
+    } else {
+      entries.push(nextEntry);
+    }
+
+    entries.sort((a, b) => a.round - b.round);
+    d.voucherEntries = entries;
+
+    const latestVoucher = entries[entries.length - 1];
+    const hasAnyAmt = entries.some(
+      (v) => v.voucherAmount !== '' && v.voucherAmount != null,
+    );
+    const allPaid = entries.length > 0 && entries.every((v) => Boolean(v.paymentDate));
+    d.voucherNo = entries.map((v) => v.voucherNo).filter(Boolean).join(', ');
+    d.voucherDate = latestVoucher?.voucherDate || '';
+    d.voucherAmount = hasAnyAmt
+      ? entries.reduce((sum, v) => sum + (Number(v.voucherAmount) || 0), 0)
+      : '';
+    d.paymentDate = allPaid ? latestVoucher?.paymentDate || '' : '';
+    d.voucherNotes = latestVoucher?.voucherNotes || '';
+  }
+
+  if (item.attachment?.fileUrl && item.attachment?.fileName) {
+    const duplicateFile = target.files.some(
+      (f) =>
+        f.url === item.attachment!.fileUrl ||
+        (f.category === meta.targetTab && f.name === item.attachment!.fileName),
+    );
+    if (!duplicateFile) {
+      target.files.push({
+        id: uid(),
+        name: item.attachment.fileName,
+        type: item.attachment.mimeType || 'application/pdf',
+        size: Number(item.attachment.fileSize || 0),
+        category: meta.targetTab,
+        url: item.attachment.fileUrl,
+      });
+    }
+  }
+
+  const prevStatus = target.status;
+  const progress = deriveProgressFromTabs(target);
+  target.step = progress.step;
+  target.status = progress.status;
+  target.due = progress.due;
+  if (prevStatus !== target.status || !target.statusUpdatedAt) {
+    target.statusUpdatedAt = new Date().toISOString();
+  }
 }

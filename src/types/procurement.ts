@@ -11,6 +11,7 @@ export type PageId =
   | 'inbox'
   | 'register'
   | 'overdue'
+  | 'saraban'
   | 'excel';
 
 export type ProjectTabId =
@@ -239,3 +240,50 @@ export interface ImportPlan {
 }
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'local' | 'error';
+
+export type SarabanDocCategory =
+  | 'tor_order'
+  | 'tor_approval'
+  | 'ref_price'
+  | 'disbursement';
+
+export type SarabanQueueStatus = 'pending' | 'approved' | 'rejected';
+
+export interface SarabanAttachment {
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number;
+  mimeType?: string;
+}
+
+export interface SarabanQueuePayload {
+  assigneeName?: string;
+  notes?: string;
+  torAuthor?: string;
+  details?: string;
+  refPrice?: number;
+  installment?: number;
+  amount?: number;
+  status?: 'pending' | 'paid';
+  voucherNo?: string;
+}
+
+export interface SarabanQueueItem {
+  queueId: string;
+  idempotencyKey: string;
+  procurementId: string;
+  projectCode: string;
+  fiscalYear: number;
+  docCategory: SarabanDocCategory;
+  bookNo: string;
+  bookDate: string;
+  subject: string;
+  payload: SarabanQueuePayload;
+  attachment?: SarabanAttachment | null;
+  queueStatus: SarabanQueueStatus;
+  reviewedBy: string;
+  reviewedAt: string;
+  rejectReason: string;
+  createdAt: string;
+  submittedBy: string;
+}

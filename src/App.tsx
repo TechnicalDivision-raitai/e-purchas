@@ -131,10 +131,10 @@ function WorkspaceShell() {
             />
           )}
 
-          {page === 'inbox' && (
+          {(page === 'inbox' || page === 'saraban') && (
             <InboxPage
               rows={filteredRows}
-              onViewProject={(id) => handleOpenView(id)}
+              onViewProject={(id, tab) => handleOpenView(id, tab)}
               onCreateProject={handleOpenCreate}
             />
           )}

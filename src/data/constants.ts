@@ -87,10 +87,51 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
     'งานเกินกำหนด',
     'งานคงค้างที่เลยกำหนดเสร็จ ตามวันที่ในเขตเวลา Asia/Bangkok',
   ],
+  saraban: [
+    'รับข้อมูลจากระบบสารบรรณ',
+    'คิวเอกสารเชื่อมโยง 3 หมวดหลัก: จัดทำ TOR, ราคากลาง และฎีกาเบิกจ่าย (2-Way Sync)',
+  ],
   excel: [
     'นำเข้า / ส่งออก Excel',
     'รองรับทะเบียนโครงการแบบ Upsert · เพิ่มรายการใหม่หรืออัปเดตตามรหัสโครงการ',
   ],
+};
+
+export const SARABAN_ALLOWED_CATEGORIES = [
+  'tor_order',
+  'tor_approval',
+  'ref_price',
+  'disbursement',
+] as const;
+
+export const SARABAN_CATEGORY_META: Record<
+  (typeof SARABAN_ALLOWED_CATEGORIES)[number],
+  {
+    label: string;
+    groupLabel: string;
+    targetTab: ProjectTabId;
+  }
+> = {
+  tor_order: {
+    label: 'คำสั่งแต่งตั้ง กก. TOR / ราคากลาง',
+    groupLabel: 'จัดทำ TOR',
+    targetTab: 'tor',
+  },
+  tor_approval: {
+    label: 'ขออนุมัติ / จัดทำ TOR',
+    groupLabel: 'จัดทำ TOR',
+    targetTab: 'tor',
+  },
+  ref_price: {
+    label: 'ขออนุมัติราคากลาง',
+    groupLabel: 'ราคากลาง',
+    targetTab: 'tor',
+  },
+  disbursement: {
+    label: 'ฎีกาเบิกจ่ายเงิน',
+    groupLabel: 'ฎีกาเบิกจ่าย',
+    targetTab: 'voucher',
+  },
 };
 
 export const NAV_ITEMS: Array<{
