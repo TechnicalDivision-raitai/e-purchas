@@ -76,6 +76,16 @@ export interface DeliveryRound {
   notes: string;
 }
 
+export interface VoucherEntry {
+  sequence?: number;
+  round: number;
+  voucherNo: string;
+  voucherDate: string;
+  voucherAmount: number | '';
+  paymentDate: string;
+  voucherNotes: string;
+}
+
 export interface AttachmentFile {
   id: string;
   name: string;
@@ -113,6 +123,9 @@ export interface ProjectDetails {
   torMembers?: CommitteeMember[];
   deliveryDue?: string;
   orderNotes?: string;
+  installmentCount?: number | '';
+  cancelledRounds?: number[];
+  installmentCancelReason?: string;
   committeeNo?: string;
   committeeDate?: string;
   committeeNames?: string;
@@ -122,6 +135,7 @@ export interface ProjectDetails {
   acceptanceMembers?: CommitteeMember[];
   deliveryRounds?: DeliveryRound[];
   acceptanceRounds?: AcceptanceRound[];
+  voucherEntries?: VoucherEntry[];
   voucherNo?: string;
   voucherDate?: string;
   voucherAmount?: number | '';
@@ -173,6 +187,7 @@ export type SortKey =
   | 'code'
   | 'year'
   | 'title'
+  | 'vendor'
   | 'docNo'
   | 'docDate'
   | 'budget'

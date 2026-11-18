@@ -1,4 +1,6 @@
 import {
+  Ban,
+  CheckCircle2,
   CheckSquare,
   Clock,
   FileText,
@@ -31,11 +33,16 @@ import {
 } from '../../data/constants';
 import {
   cleanAcceptanceRounds,
+  cleanCancelledRounds,
   cleanCommitteeMembers,
   cleanDeliveryRounds,
+  cleanInstallmentCount,
+  cleanVoucherEntries,
   createAcceptanceDraft,
+  createVoucherDraft,
   deriveProgressFromTabs,
   getAttachmentMeta,
+  getInstallmentSummary,
   getResponsibleName,
   getTorPreparedDate,
   validateProject,
@@ -56,8 +63,15 @@ import type {
   ProjectStatus,
   ProjectTabId,
   ProjectType,
+  VoucherEntry,
 } from '../../types/procurement';
-import { getFiscalYearOptions, isValidIsoDate, todayBangkok, uid } from '../../utils/date';
+import {
+  formatThaiDate,
+  getFiscalYearOptions,
+  isValidIsoDate,
+  todayBangkok,
+  uid,
+} from '../../utils/date';
 import { formatMoney } from '../../utils/format';
 import {
   AutoSuggestInput,
@@ -99,6 +113,7 @@ interface DraftState {
   acceptanceMembers: CommitteeMember[];
   deliveryRounds: DeliveryRound[];
   acceptanceRounds: AcceptanceRound[];
+  voucherEntries: VoucherEntry[];
   files: AttachmentFile[];
   statusMode: 'auto' | 'manual';
   manualStatus: ProjectStatus;
@@ -107,6 +122,7 @@ interface DraftState {
 function createDraftFromRecord(old: ProjectRecord | undefined): DraftState {
   const details = old?.projectDetails || {};
   const acceptance = createAcceptanceDraft(details);
+  const vouchers = createVoucherDraft(details);
   const torMembers: CommitteeMember[] = structuredClone(
     details.torMembers ?? [{ name: '', position: '', role: 'ประธานกรรมการ' }],
   );
@@ -135,6 +151,7 @@ function createDraftFromRecord(old: ProjectRecord | undefined): DraftState {
     acceptanceMembers: acceptance.members,
     deliveryRounds: acceptance.deliveries,
     acceptanceRounds: acceptance.rounds,
+    voucherEntries: vouchers,
     files: structuredClone(old?.files || []),
     statusMode:
       old?.manualStatusOverride ||
@@ -169,6 +186,7 @@ export function ProjectEditorModal({
     voucher: '',
   });
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [showCancelPanel, setShowCancelPanel] = useState<boolean>(false);
 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const panelContainerRef = useRef<HTMLDivElement | null>(null);
@@ -178,11 +196,23 @@ export function ProjectEditorModal({
     setDraft(createDraftFromRecord(existing));
     setFormError('');
     setUploadErrors({ general: '', tor: '', order: '', acceptance: '', voucher: '' });
+    setShowCancelPanel(
+      Boolean(existing?.projectDetails?.cancelledRounds?.length),
+    );
   }, [projectId, initialTab, existing]);
 
   const activeIndex = Math.max(
     0,
     PROJECT_TABS.findIndex((t) => t.id === activeTab),
+  );
+
+  const installmentSummary = useMemo(
+    () =>
+      getInstallmentSummary({
+        ...draft.details,
+        voucherEntries: draft.voucherEntries,
+      }),
+    [draft.details, draft.voucherEntries],
   );
 
   const autoProgressPreview = useMemo(
@@ -201,6 +231,7 @@ export function ProjectEditorModal({
             acceptanceMembers: draft.acceptanceMembers,
             deliveryRounds: draft.deliveryRounds,
             acceptanceRounds: draft.acceptanceRounds,
+            voucherEntries: draft.voucherEntries,
           },
           files: draft.files,
           status: existing?.status || 'รอจัดทำTOR และราคากลาง',
@@ -368,13 +399,45 @@ export function ProjectEditorModal({
       const cleanedAcceptanceMembers = cleanCommitteeMembers(draft.acceptanceMembers);
       const cleanedDeliveries = cleanDeliveryRounds(draft.deliveryRounds);
       const cleanedRounds = cleanAcceptanceRounds(draft.acceptanceRounds);
+      const cleanedVouchers = cleanVoucherEntries(draft.voucherEntries);
+      const cleanedInstallmentCount = cleanInstallmentCount(draft.details.installmentCount);
+      const cleanedCancelledRounds = cleanCancelledRounds(
+        draft.details.cancelledRounds,
+        cleanedInstallmentCount,
+      );
+      const cleanedCancelReason = String(
+        draft.details.installmentCancelReason || '',
+      ).trim();
+
+      const latestVoucher = cleanedVouchers[cleanedVouchers.length - 1];
+      const hasAnyVoucherAmount = cleanedVouchers.some(
+        (v) => v.voucherAmount !== '' && v.voucherAmount != null,
+      );
+      const totalVoucherAmount = hasAnyVoucherAmount
+        ? cleanedVouchers.reduce((sum, v) => sum + (Number(v.voucherAmount) || 0), 0)
+        : ('' as const);
+      const allVouchersPaid =
+        cleanedVouchers.length > 0 &&
+        cleanedVouchers.every((v) => Boolean(v.paymentDate));
 
       const details: ProjectDetails = {
         ...draft.details,
+        installmentCount: cleanedInstallmentCount,
+        cancelledRounds: cleanedCancelledRounds,
+        installmentCancelReason: cleanedCancelReason,
         torMembers: cleanedTorMembers,
         acceptanceMembers: cleanedAcceptanceMembers,
         deliveryRounds: cleanedDeliveries,
         acceptanceRounds: cleanedRounds,
+        voucherEntries: cleanedVouchers,
+        voucherNo: cleanedVouchers
+          .map((v) => v.voucherNo)
+          .filter(Boolean)
+          .join(', '),
+        voucherDate: latestVoucher?.voucherDate || '',
+        voucherAmount: totalVoucherAmount,
+        paymentDate: allVouchersPaid ? latestVoucher?.paymentDate || '' : '',
+        voucherNotes: latestVoucher?.voucherNotes || '',
       };
 
       const dateFields: Array<keyof ProjectDetails> = [
@@ -738,6 +801,214 @@ export function ProjectEditorModal({
             {uploadErrors[category]}
           </p>
         )}
+      </div>
+    );
+  };
+
+  const toggleCancelledRound = (round: number) => {
+    setDraft((prev) => {
+      const current = new Set(prev.details.cancelledRounds || []);
+      if (current.has(round)) current.delete(round);
+      else current.add(round);
+      return {
+        ...prev,
+        details: {
+          ...prev.details,
+          cancelledRounds: [...current].sort((a, b) => a - b),
+        },
+      };
+    });
+  };
+
+  const handleCancelRemainingInstallments = (andCloseProject: boolean) => {
+    const maxN = installmentSummary.installmentCount;
+    if (maxN < 1) return;
+
+    const nonEmptyVoucherRounds = new Set(
+      draft.voucherEntries
+        .filter(
+          (v) =>
+            v.voucherNo.trim() ||
+            v.voucherDate ||
+            v.voucherAmount !== '' ||
+            v.paymentDate ||
+            v.voucherNotes.trim(),
+        )
+        .map((v) => v.round),
+    );
+
+    const remainingToCancel = Array.from({ length: maxN }, (_, i) => i + 1).filter(
+      (r) => !nonEmptyVoucherRounds.has(r),
+    );
+    const nextCancelled = [
+      ...new Set([...(draft.details.cancelledRounds || []), ...remainingToCancel]),
+    ].sort((a, b) => a - b);
+    const nextCancelledSet = new Set(nextCancelled);
+    const nextActiveRounds = Array.from({ length: maxN }, (_, i) => i + 1).filter(
+      (r) => !nextCancelledSet.has(r),
+    );
+    const allActivePaid =
+      nextActiveRounds.length > 0 &&
+      nextActiveRounds.every((r) =>
+        draft.voucherEntries.some((v) => v.round === r && Boolean(v.paymentDate)),
+      );
+
+    setDraft((prev) => ({
+      ...prev,
+      details: {
+        ...prev.details,
+        cancelledRounds: nextCancelled,
+      },
+      statusMode: andCloseProject
+        ? allActivePaid
+          ? 'auto'
+          : 'manual'
+        : prev.statusMode,
+      manualStatus: andCloseProject
+        ? nextActiveRounds.length > 0
+          ? 'เสร็จสิ้น'
+          : 'ยกเลิก'
+        : prev.manualStatus,
+    }));
+
+    setShowCancelPanel(true);
+
+    if (andCloseProject) {
+      showToast(
+        nextActiveRounds.length > 0
+          ? 'ยกเลิกงวดงานที่เหลือและปรับสถานะเป็น “เสร็จสิ้น” แล้ว (กดบันทึกเพื่อยืนยัน)'
+          : 'ยกเลิกงวดงานทั้งหมดและปรับสถานะเป็น “ยกเลิก” แล้ว (กดบันทึกเพื่อยืนยัน)',
+      );
+    } else if (remainingToCancel.length > 0) {
+      showToast(`ยกเลิกงวดงานที่เหลือ (${remainingToCancel.length} งวด) แล้ว`);
+    }
+  };
+
+  const renderInstallmentCancelPanel = () => {
+    const maxN = installmentSummary.installmentCount;
+    if (maxN < 1 || !showCancelPanel) return null;
+
+    const allRounds = Array.from({ length: maxN }, (_, i) => i + 1);
+    const cancelledSet = new Set(installmentSummary.cancelledRounds);
+    const nonEmptyVoucherRounds = new Set(
+      installmentSummary.voucherEntries.map((v) => v.round),
+    );
+    const paidVoucherRounds = new Set(
+      installmentSummary.voucherEntries
+        .filter((v) => Boolean(v.paymentDate))
+        .map((v) => v.round),
+    );
+    const remainingUnvouchered = allRounds.filter(
+      (r) => !cancelledSet.has(r) && !nonEmptyVoucherRounds.has(r),
+    );
+
+    return (
+      <div className="col-span-full rounded-2xl border border-[#e3b8b8] bg-[#fff7f7] p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h4 className="flex items-center gap-2 text-xs font-semibold text-[#8c2323]">
+              <Ban className="h-4 w-4 text-[#b82828]" />
+              จัดการยกเลิกงวดงานที่เหลือ / ปิดจบโครงการกรณีส่งมอบไม่ครบ
+            </h4>
+            <p className="mt-0.5 text-[11px] text-[#7a4b4b]">
+              คลิกที่งวดเพื่อยกเลิกหรือคืนค่างวด (เช่น กรณียกเลิกสัญญา) ระบบจะคำนวณเฉพาะงวดที่เหลืออยู่
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCancelPanel(false)}
+            className="rounded-md border border-[#e3b8b8] bg-white px-2.5 py-1 text-[11px] font-medium text-[#7a3333] hover:bg-[#ffebeb]"
+          >
+            ซ่อน
+          </button>
+        </div>
+
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {allRounds.map((r) => {
+            const isCancelled = cancelledSet.has(r);
+            const isPaid = paidVoucherRounds.has(r);
+            const hasVoucher = nonEmptyVoucherRounds.has(r);
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => toggleCancelledRound(r)}
+                className={`rounded-lg border px-2.5 py-1.5 font-mono-num text-[11px] font-semibold transition ${
+                  isCancelled
+                    ? 'border-[#e49e9e] bg-[#ffe4e4] text-[#9b2222] line-through'
+                    : isPaid
+                      ? 'border-[#9cd8bd] bg-[#dff5eb] text-[#116947] hover:bg-[#cdeedf]'
+                      : hasVoucher
+                        ? 'border-[#9fc0e6] bg-[#e9f2fc] text-[#0f4ca6] hover:bg-[#dcebfa]'
+                        : 'border-[#c4d5e8] bg-white text-[#2b4d75] hover:border-[#e3a3a3] hover:bg-[#fff0f0]'
+                }`}
+                title={
+                  isCancelled
+                    ? 'คลิกเพื่อคืนค่างวดนี้'
+                    : 'คลิกเพื่อยกเลิกงวดนี้'
+                }
+              >
+                งวดที่ {r}
+                {isCancelled ? ' (ยกเลิก)' : isPaid ? ' ✓' : hasVoucher ? ' · รอเบิก' : ''}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {remainingUnvouchered.length > 0 && (
+            <button
+              type="button"
+              onClick={() => handleCancelRemainingInstallments(false)}
+              className="rounded-lg border border-[#d98c8c] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#9c2323] hover:bg-[#ffebeb]"
+            >
+              ยกเลิกงวดที่ยังไม่ทำฎีกาทั้งหมด ({remainingUnvouchered.length} งวด)
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => handleCancelRemainingInstallments(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0d825b] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#096747]"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            ยกเลิกงวดที่เหลือและปิดจบโครงการ
+          </button>
+
+          {installmentSummary.cancelledRounds.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setDraft((prev) => ({
+                  ...prev,
+                  details: {
+                    ...prev.details,
+                    cancelledRounds: [],
+                    installmentCancelReason: '',
+                  },
+                  statusMode: 'auto',
+                }))
+              }
+              className="rounded-lg border border-[#b4cde8] bg-white px-3 py-1.5 text-[11px] font-medium text-[#2b5280] hover:bg-[#edf4fc]"
+            >
+              คืนค่างวดที่ยกเลิกทั้งหมด
+            </button>
+          )}
+        </div>
+
+        <label className="block text-[11px] font-semibold text-[#6e3030]">
+          เหตุผลการยกเลิกงวดงาน / ยกเลิกสัญญา
+          <input
+            type="text"
+            maxLength={500}
+            placeholder="เช่น ยกเลิกสัญญาตั้งแต่งวดที่ … เนื่องจากผู้รับจ้างไม่สามารถส่งมอบงานต่อได้"
+            value={draft.details.installmentCancelReason || ''}
+            onChange={(e) =>
+              updateDetail('installmentCancelReason', e.target.value)
+            }
+            className="mt-1 min-h-[36px] w-full rounded-lg border border-[#e3b8b8] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
+          />
+        </label>
       </div>
     );
   };
@@ -1190,6 +1461,60 @@ export function ProjectEditorModal({
                       />
                     </label>
 
+                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                      จำนวนงวดงาน (งวด)
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        placeholder="เช่น 1 หรือ 12"
+                        value={draft.details.installmentCount ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const nextCount =
+                            raw === '' ? '' : Math.min(100, Math.max(1, Math.trunc(Number(raw)) || 1));
+                          setDraft((prev) => ({
+                            ...prev,
+                            details: {
+                              ...prev.details,
+                              installmentCount: nextCount,
+                              cancelledRounds:
+                                typeof nextCount === 'number'
+                                  ? (prev.details.cancelledRounds || []).filter(
+                                      (r) => r <= nextCount,
+                                    )
+                                  : [],
+                            },
+                          }));
+                        }}
+                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
+                      />
+                    </label>
+
+                    <div className="flex flex-col justify-end text-[11px] text-[#4b6a8d]">
+                      {installmentSummary.installmentCount > 0 ? (
+                        <div className="rounded-[10px] border border-[#b4cde8] bg-[#edf4fc] px-3 py-2.5 leading-relaxed">
+                          กำหนดส่งมอบและเบิกฎีกา{' '}
+                          <b className="font-mono-num text-[#0f4ca6]">
+                            {installmentSummary.installmentCount} งวด
+                          </b>
+                          {installmentSummary.cancelledRounds.length > 0 && (
+                            <span className="text-[#a82c2c]">
+                              {' '}
+                              (ยกเลิก {installmentSummary.cancelledRounds.length} งวด · เหลือ{' '}
+                              {installmentSummary.activeRounds.length} งวด)
+                            </span>
+                          )}
+                          {' · '}ระบบจะยึดจำนวนนี้ในแท็บ 4 และแท็บ 5
+                        </div>
+                      ) : (
+                        <div className="rounded-[10px] border border-[#d6e4f3] bg-[#f6fafe] px-3 py-2.5 text-[#5b7796]">
+                          ระบุจำนวนงวดงาน (เช่น 12 งวดสำหรับจ้างเหมารายเดือน) เพื่อติดตามการส่งมอบและฎีกาให้ครบทุกงวด
+                        </div>
+                      )}
+                    </div>
+
                     <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       รายละเอียดการสั่งซื้อ / สั่งจ้าง
                       <textarea
@@ -1238,6 +1563,80 @@ export function ProjectEditorModal({
                       'ไฟล์แนบคำสั่งแต่งตั้งคณะกรรมการตรวจรับ (PDF, Excel, Word)',
                     )}
 
+                    {installmentSummary.installmentCount > 0 && (
+                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#9fc0e6] bg-[#e9f2fc] px-4 py-3 text-xs text-[#153e70]">
+                        <span>
+                          งวดงานตามคำสั่งซื้อ/จ้าง:{' '}
+                          <b className="font-mono-num">
+                            {installmentSummary.installmentCount} งวด
+                          </b>
+                          {installmentSummary.cancelledRounds.length > 0 && (
+                            <span className="text-[#a82c2c]">
+                              {' '}
+                              (ยกเลิก {installmentSummary.cancelledRounds.length} งวด ·
+                              คงเหลือต้องส่ง {installmentSummary.activeRounds.length} งวด)
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {(() => {
+                            const existingRounds = new Set(
+                              draft.deliveryRounds.map((d) => d.round),
+                            );
+                            const missingDeliveryRounds =
+                              installmentSummary.activeRounds.filter(
+                                (r) => !existingRounds.has(r),
+                              );
+                            if (missingDeliveryRounds.length === 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDraft((prev) => {
+                                    const nonBlank = prev.deliveryRounds.filter(
+                                      (d) =>
+                                        d.docNo.trim() || d.date || d.notes.trim(),
+                                    );
+                                    const nonBlankSet = new Set(
+                                      nonBlank.map((d) => d.round),
+                                    );
+                                    const additions = installmentSummary.activeRounds
+                                      .filter((r) => !nonBlankSet.has(r))
+                                      .map((r) => ({
+                                        round: r,
+                                        docNo: '',
+                                        date: '',
+                                        notes: '',
+                                      }));
+                                    return {
+                                      ...prev,
+                                      deliveryRounds: [...nonBlank, ...additions].sort(
+                                        (a, b) => a.round - b.round,
+                                      ),
+                                    };
+                                  })
+                                }
+                                className="rounded-lg bg-[#0f4ca6] px-3 py-1 text-[11px] font-semibold text-white hover:bg-[#0b3a80]"
+                              >
+                                ＋ สร้างรายการส่งมอบให้ครบ ({installmentSummary.activeRounds.length} งวด)
+                              </button>
+                            );
+                          })()}
+                          <button
+                            type="button"
+                            onClick={() => setShowCancelPanel((v) => !v)}
+                            className="rounded-lg border border-[#d99b9b] bg-white px-3 py-1 text-[11px] font-semibold text-[#9c2323] hover:bg-[#fff0f0]"
+                          >
+                            {showCancelPanel
+                              ? 'ซ่อนจัดการยกเลิกงวด'
+                              : 'ยกเลิกงวดงานที่เหลือ'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {renderInstallmentCancelPanel()}
+
                     <div className="col-span-full rounded-2xl border border-[#b4cde8] bg-[#edf4fc] p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <h4 className="flex items-center gap-2 text-xs font-semibold text-[#17406e]">
@@ -1253,24 +1652,35 @@ export function ProjectEditorModal({
                           type="button"
                           disabled={draft.deliveryRounds.length >= 100}
                           onClick={() =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              deliveryRounds: [
-                                ...prev.deliveryRounds,
-                                {
-                                  round:
-                                    Math.max(
-                                      0,
-                                      ...prev.deliveryRounds.map(
-                                        (r) => Number(r.round) || 0,
-                                      ),
-                                    ) + 1,
-                                  docNo: '',
-                                  date: '',
-                                  notes: '',
-                                },
-                              ],
-                            }))
+                            setDraft((prev) => {
+                              const usedRounds = new Set(
+                                prev.deliveryRounds.map((r) => Number(r.round)),
+                              );
+                              const nextActive =
+                                installmentSummary.activeRounds.find(
+                                  (r) => !usedRounds.has(r),
+                                );
+                              const nextRound =
+                                nextActive ??
+                                Math.max(
+                                  0,
+                                  ...prev.deliveryRounds.map(
+                                    (r) => Number(r.round) || 0,
+                                  ),
+                                ) + 1;
+                              return {
+                                ...prev,
+                                deliveryRounds: [
+                                  ...prev.deliveryRounds,
+                                  {
+                                    round: nextRound,
+                                    docNo: '',
+                                    date: '',
+                                    notes: '',
+                                  },
+                                ],
+                              };
+                            })
                           }
                           className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
                         >
@@ -1284,122 +1694,181 @@ export function ProjectEditorModal({
                         </p>
                       ) : (
                         <div className="space-y-2.5">
-                          {draft.deliveryRounds.map((delivItem, dIdx) => (
-                            <div
-                              key={dIdx}
-                              className="relative rounded-xl border border-[#aec7e4] bg-white p-3.5 pr-9"
-                            >
-                              <button
-                                type="button"
-                                aria-label={`ลบการส่งมอบครั้งที่ ${dIdx + 1}`}
-                                title="ลบการส่งมอบ"
-                                onClick={() =>
-                                  setDraft((prev) => ({
-                                    ...prev,
-                                    deliveryRounds: prev.deliveryRounds.filter(
-                                      (_, i) => i !== dIdx,
-                                    ),
-                                  }))
-                                }
-                                className="absolute top-3 right-2.5 rounded p-1 text-xs text-[#8ba4bd] hover:bg-[#fff0f1] hover:text-[#b95b68]"
+                          {draft.deliveryRounds.map((delivItem, dIdx) => {
+                            const isCancelledRound =
+                              installmentSummary.cancelledRounds.includes(
+                                delivItem.round,
+                              );
+                            return (
+                              <div
+                                key={dIdx}
+                                className={`relative rounded-xl border p-3.5 pr-9 ${
+                                  isCancelledRound
+                                    ? 'border-[#e3b8b8] bg-[#fff9f9]'
+                                    : 'border-[#aec7e4] bg-white'
+                                }`}
                               >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
+                                <button
+                                  type="button"
+                                  aria-label={`ลบการส่งมอบครั้งที่ ${dIdx + 1}`}
+                                  title="ลบการส่งมอบ"
+                                  onClick={() =>
+                                    setDraft((prev) => ({
+                                      ...prev,
+                                      deliveryRounds: prev.deliveryRounds.filter(
+                                        (_, i) => i !== dIdx,
+                                      ),
+                                    }))
+                                  }
+                                  className="absolute top-3 right-2.5 rounded p-1 text-xs text-[#8ba4bd] hover:bg-[#fff0f1] hover:text-[#b95b68]"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
 
-                              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                                <label className="block text-[11px] text-[#556f8c]">
-                                  งวดที่
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={delivItem.round}
-                                    onChange={(e) =>
-                                      setDraft((prev) => ({
-                                        ...prev,
-                                        deliveryRounds: prev.deliveryRounds.map(
-                                          (item, i) =>
-                                            i === dIdx
-                                              ? {
-                                                  ...item,
-                                                  round: Number(e.target.value),
-                                                }
-                                              : item,
-                                        ),
-                                      }))
-                                    }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
-                                  />
-                                </label>
+                                {isCancelledRound && (
+                                  <div className="mb-2 inline-block rounded bg-[#ffe4e4] px-2 py-0.5 text-[10.5px] font-semibold text-[#9b2222]">
+                                    งวดที่ {delivItem.round} ถูกยกเลิกแล้ว
+                                  </div>
+                                )}
 
-                                <label className="block text-[11px] text-[#556f8c]">
-                                  เลขที่หนังสือส่งมอบ / ใบส่งของ
-                                  <input
-                                    type="text"
-                                    maxLength={200}
-                                    placeholder="เช่น ใบส่งของเลขที่…"
-                                    value={delivItem.docNo}
-                                    onChange={(e) =>
-                                      setDraft((prev) => ({
-                                        ...prev,
-                                        deliveryRounds: prev.deliveryRounds.map(
-                                          (item, i) =>
-                                            i === dIdx
-                                              ? { ...item, docNo: e.target.value }
-                                              : item,
-                                        ),
-                                      }))
-                                    }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
-                                  />
-                                </label>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                                  <label className="block text-[11px] text-[#556f8c]">
+                                    งวดที่
+                                    {installmentSummary.installmentCount > 0 ? (
+                                      <select
+                                        value={delivItem.round}
+                                        onChange={(e) =>
+                                          setDraft((prev) => ({
+                                            ...prev,
+                                            deliveryRounds: prev.deliveryRounds.map(
+                                              (item, i) =>
+                                                i === dIdx
+                                                  ? {
+                                                      ...item,
+                                                      round: Number(e.target.value),
+                                                    }
+                                                  : item,
+                                            ),
+                                          }))
+                                        }
+                                        className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                      >
+                                        {Array.from(
+                                          {
+                                            length: installmentSummary.installmentCount,
+                                          },
+                                          (_, i) => i + 1,
+                                        ).map((r) => (
+                                          <option key={r} value={r}>
+                                            งวดที่ {r}
+                                            {installmentSummary.cancelledRounds.includes(
+                                              r,
+                                            )
+                                              ? ' (ยกเลิก)'
+                                              : ''}
+                                          </option>
+                                        ))}
+                                        {delivItem.round >
+                                          installmentSummary.installmentCount && (
+                                          <option value={delivItem.round}>
+                                            งวดที่ {delivItem.round} (เกินกำหนดงวด)
+                                          </option>
+                                        )}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        value={delivItem.round}
+                                        onChange={(e) =>
+                                          setDraft((prev) => ({
+                                            ...prev,
+                                            deliveryRounds: prev.deliveryRounds.map(
+                                              (item, i) =>
+                                                i === dIdx
+                                                  ? {
+                                                      ...item,
+                                                      round: Number(e.target.value),
+                                                    }
+                                                  : item,
+                                            ),
+                                          }))
+                                        }
+                                        className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                      />
+                                    )}
+                                  </label>
 
-                                <label className="block text-[11px] text-[#556f8c]">
-                                  วันที่ส่งมอบ
-                                  <input
-                                    type="date"
-                                    value={delivItem.date}
-                                    onChange={(e) =>
-                                      setDraft((prev) => ({
-                                        ...prev,
-                                        deliveryRounds: prev.deliveryRounds.map(
-                                          (item, i) =>
-                                            i === dIdx
-                                              ? { ...item, date: e.target.value }
-                                              : item,
-                                        ),
-                                      }))
-                                    }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
-                                  />
-                                </label>
+                                  <label className="block text-[11px] text-[#556f8c]">
+                                    เลขที่หนังสือส่งมอบ / ใบส่งของ
+                                    <input
+                                      type="text"
+                                      maxLength={200}
+                                      placeholder="เช่น ใบส่งของเลขที่…"
+                                      value={delivItem.docNo}
+                                      onChange={(e) =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          deliveryRounds: prev.deliveryRounds.map(
+                                            (item, i) =>
+                                              i === dIdx
+                                                ? { ...item, docNo: e.target.value }
+                                                : item,
+                                          ),
+                                        }))
+                                      }
+                                      className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
+                                    />
+                                  </label>
 
-                                <label className="col-span-full block">
-                                  <span className="sr-only">
-                                    รายละเอียดการส่งมอบครั้งที่ {dIdx + 1}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    maxLength={2000}
-                                    placeholder="รายละเอียดการส่งมอบงาน / พัสดุ…"
-                                    value={delivItem.notes}
-                                    onChange={(e) =>
-                                      setDraft((prev) => ({
-                                        ...prev,
-                                        deliveryRounds: prev.deliveryRounds.map(
-                                          (item, i) =>
-                                            i === dIdx
-                                              ? { ...item, notes: e.target.value }
-                                              : item,
-                                        ),
-                                      }))
-                                    }
-                                    className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
-                                  />
-                                </label>
+                                  <label className="block text-[11px] text-[#556f8c]">
+                                    วันที่ส่งมอบ
+                                    <input
+                                      type="date"
+                                      value={delivItem.date}
+                                      onChange={(e) =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          deliveryRounds: prev.deliveryRounds.map(
+                                            (item, i) =>
+                                              i === dIdx
+                                                ? { ...item, date: e.target.value }
+                                                : item,
+                                          ),
+                                        }))
+                                      }
+                                      className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                    />
+                                  </label>
+
+                                  <label className="col-span-full block">
+                                    <span className="sr-only">
+                                      รายละเอียดการส่งมอบครั้งที่ {dIdx + 1}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      maxLength={2000}
+                                      placeholder="รายละเอียดการส่งมอบงาน / พัสดุ…"
+                                      value={delivItem.notes}
+                                      onChange={(e) =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          deliveryRounds: prev.deliveryRounds.map(
+                                            (item, i) =>
+                                              i === dIdx
+                                                ? { ...item, notes: e.target.value }
+                                                : item,
+                                          ),
+                                        }))
+                                      }
+                                      className="min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
+                                    />
+                                  </label>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1419,24 +1888,35 @@ export function ProjectEditorModal({
                           type="button"
                           disabled={draft.acceptanceRounds.length >= 100}
                           onClick={() =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              acceptanceRounds: [
-                                ...prev.acceptanceRounds,
-                                {
-                                  round:
-                                    Math.max(
-                                      0,
-                                      ...prev.acceptanceRounds.map(
-                                        (r) => Number(r.round) || 0,
-                                      ),
-                                    ) + 1,
-                                  date: '',
-                                  result: '',
-                                  notes: '',
-                                },
-                              ],
-                            }))
+                            setDraft((prev) => {
+                              const usedRounds = new Set(
+                                prev.acceptanceRounds.map((r) => Number(r.round)),
+                              );
+                              const nextActive =
+                                installmentSummary.activeRounds.find(
+                                  (r) => !usedRounds.has(r),
+                                );
+                              const nextRound =
+                                nextActive ??
+                                Math.max(
+                                  0,
+                                  ...prev.acceptanceRounds.map(
+                                    (r) => Number(r.round) || 0,
+                                  ),
+                                ) + 1;
+                              return {
+                                ...prev,
+                                acceptanceRounds: [
+                                  ...prev.acceptanceRounds,
+                                  {
+                                    round: nextRound,
+                                    date: '',
+                                    result: '',
+                                    notes: '',
+                                  },
+                                ],
+                              };
+                            })
                           }
                           className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
                         >
@@ -1475,27 +1955,70 @@ export function ProjectEditorModal({
                               <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                                 <label className="block text-[11px] text-[#556f8c]">
                                   งวดที่
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={roundItem.round}
-                                    onChange={(e) =>
-                                      setDraft((prev) => ({
-                                        ...prev,
-                                        acceptanceRounds: prev.acceptanceRounds.map(
-                                          (item, i) =>
-                                            i === rIdx
-                                              ? {
-                                                  ...item,
-                                                  round: Number(e.target.value),
-                                                }
-                                              : item,
-                                        ),
-                                      }))
-                                    }
-                                    className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
-                                  />
+                                  {installmentSummary.installmentCount > 0 ? (
+                                    <select
+                                      value={roundItem.round}
+                                      onChange={(e) =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          acceptanceRounds:
+                                            prev.acceptanceRounds.map((item, i) =>
+                                              i === rIdx
+                                                ? {
+                                                    ...item,
+                                                    round: Number(e.target.value),
+                                                  }
+                                                : item,
+                                            ),
+                                        }))
+                                      }
+                                      className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                    >
+                                      {Array.from(
+                                        {
+                                          length: installmentSummary.installmentCount,
+                                        },
+                                        (_, i) => i + 1,
+                                      ).map((r) => (
+                                        <option key={r} value={r}>
+                                          งวดที่ {r}
+                                          {installmentSummary.cancelledRounds.includes(
+                                            r,
+                                          )
+                                            ? ' (ยกเลิก)'
+                                            : ''}
+                                        </option>
+                                      ))}
+                                      {roundItem.round >
+                                        installmentSummary.installmentCount && (
+                                        <option value={roundItem.round}>
+                                          งวดที่ {roundItem.round} (เกินกำหนดงวด)
+                                        </option>
+                                      )}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={roundItem.round}
+                                      onChange={(e) =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          acceptanceRounds:
+                                            prev.acceptanceRounds.map((item, i) =>
+                                              i === rIdx
+                                                ? {
+                                                    ...item,
+                                                    round: Number(e.target.value),
+                                                  }
+                                                : item,
+                                            ),
+                                        }))
+                                      }
+                                      className="mt-1 min-h-[34px] w-full rounded-md border border-[#c6d9ec] bg-white px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                                    />
+                                  )}
                                 </label>
 
                                 <label className="block text-[11px] text-[#556f8c]">
@@ -1592,75 +2115,667 @@ export function ProjectEditorModal({
                   </div>
                 )}
 
-                {tab.id === 'voucher' && (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      เลขที่ฎีกา
-                      <input
-                        type="text"
-                        value={draft.details.voucherNo || ''}
-                        onChange={(e) => updateDetail('voucherNo', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                {tab.id === 'voucher' &&
+                  (() => {
+                    const recordedDeliveries = draft.deliveryRounds.filter(
+                      (d) => d.date || d.docNo?.trim() || d.notes?.trim() || d.round,
+                    );
+                    const unlinkedDeliveries = draft.deliveryRounds.filter(
+                      (d) =>
+                        (d.date || d.docNo?.trim() || d.notes?.trim()) &&
+                        !draft.voucherEntries.some(
+                          (v) =>
+                            v.round === d.round &&
+                            (v.voucherNo.trim() ||
+                              v.voucherDate ||
+                              v.voucherAmount !== '' ||
+                              v.paymentDate ||
+                              v.voucherNotes.trim()),
+                        ),
+                    );
+                    const totalVoucherAmt = draft.voucherEntries.reduce(
+                      (sum, v) => sum + (Number(v.voucherAmount) || 0),
+                      0,
+                    );
+                    const paidCount = draft.voucherEntries.filter((v) =>
+                      Boolean(v.paymentDate),
+                    ).length;
+                    const agreedNum = Number(draft.agreed) || 0;
 
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      วันที่ฎีกา
-                      <input
-                        type="date"
-                        value={draft.details.voucherDate || ''}
-                        onChange={(e) => updateDetail('voucherDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#b4cde8] bg-[#edf4fc] p-4 sm:grid-cols-3">
+                          <div>
+                            <div className="text-[11px] font-medium text-[#4a6a8e]">
+                              จำนวนฎีกาที่บันทึก
+                            </div>
+                            <div className="mt-0.5 font-mono-num text-sm font-bold text-[#0f3463]">
+                              {draft.voucherEntries.length} ครั้ง{' '}
+                              {installmentSummary.installmentCount > 0 && (
+                                <span className="text-[11px] font-semibold text-[#185bb5]">
+                                  (ตามสัญญา {installmentSummary.activeRounds.length}
+                                  {installmentSummary.cancelledRounds.length > 0
+                                    ? `/${installmentSummary.installmentCount}`
+                                    : ''}{' '}
+                                  งวด)
+                                </span>
+                              )}{' '}
+                              <span className="text-[11px] font-medium text-[#0e7452]">
+                                · เบิกจ่ายแล้ว {paidCount}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium text-[#4a6a8e]">
+                              ยอดรวมตามฎีกาทั้งหมด
+                            </div>
+                            <div className="mt-0.5 font-mono-num text-sm font-bold text-[#0f4ca6]">
+                              {formatMoney(totalVoucherAmt)} บาท
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium text-[#4a6a8e]">
+                              คงเหลือจากวงเงินตกลง ({formatMoney(agreedNum)})
+                            </div>
+                            <div
+                              className={`mt-0.5 font-mono-num text-sm font-bold ${
+                                agreedNum > 0 && totalVoucherAmt > agreedNum
+                                  ? 'text-[#b82828]'
+                                  : 'text-[#153152]'
+                              }`}
+                            >
+                              {formatMoney(Math.max(0, agreedNum - totalVoucherAmt))} บาท
+                            </div>
+                          </div>
+                        </div>
 
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      จำนวนเงินตามฎีกา (บาท)
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={draft.details.voucherAmount ?? ''}
-                        onChange={(e) =>
-                          updateDetail(
-                            'voucherAmount',
-                            e.target.value === '' ? '' : Number(e.target.value),
-                          )
-                        }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                        {installmentSummary.installmentCount > 0 && (
+                          <div className="rounded-xl border border-[#b4cde8] bg-[#f5f9ff] p-4">
+                            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs font-semibold text-[#17406e]">
+                                ติดตามการส่งมอบและจัดทำฎีกาตามงวดงาน (
+                                {installmentSummary.voucheredActiveRounds.length}/
+                                {installmentSummary.activeRounds.length} งวด)
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {installmentSummary.missingVoucherRounds.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setDraft((prev) => {
+                                        const existingNonBlank =
+                                          prev.voucherEntries.filter(
+                                            (v) =>
+                                              v.voucherNo.trim() ||
+                                              v.voucherDate ||
+                                              v.voucherAmount !== '' ||
+                                              v.paymentDate ||
+                                              v.voucherNotes.trim(),
+                                          );
+                                        const nonBlankSet = new Set(
+                                          existingNonBlank.map((v) => v.round),
+                                        );
+                                        const additions =
+                                          installmentSummary.activeRounds
+                                            .filter((r) => !nonBlankSet.has(r))
+                                            .map((r) => {
+                                              const dlv =
+                                                prev.deliveryRounds.find(
+                                                  (d) => d.round === r,
+                                                );
+                                              return {
+                                                round: r,
+                                                voucherNo: '',
+                                                voucherDate: '',
+                                                voucherAmount: '' as const,
+                                                paymentDate: '',
+                                                voucherNotes: dlv?.docNo
+                                                  ? `อ้างอิงหนังสือส่งมอบ ${dlv.docNo}`
+                                                  : '',
+                                              };
+                                            });
+                                        return {
+                                          ...prev,
+                                          voucherEntries: [
+                                            ...existingNonBlank,
+                                            ...additions,
+                                          ].sort((a, b) => a.round - b.round),
+                                        };
+                                      })
+                                    }
+                                    className="rounded-lg bg-[#0f4ca6] px-3 py-1 text-[11px] font-semibold text-white hover:bg-[#0b3a80]"
+                                  >
+                                    ＋ เพิ่มฎีกาที่เหลือ (
+                                    {installmentSummary.missingVoucherRounds.length} งวด)
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowCancelPanel((v) => !v)}
+                                  className="rounded-lg border border-[#d99b9b] bg-white px-3 py-1 text-[11px] font-semibold text-[#9c2323] hover:bg-[#fff0f0]"
+                                >
+                                  {showCancelPanel
+                                    ? 'ซ่อนจัดการยกเลิกงวด'
+                                    : 'ยกเลิกงวดงานที่เหลือ / ปิดจบโครงการ'}
+                                </button>
+                              </div>
+                            </div>
 
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      วันที่เบิกจ่าย
-                      <input
-                        type="date"
-                        value={draft.details.paymentDate || ''}
-                        onChange={(e) => updateDetail('paymentDate', e.target.value)}
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {Array.from(
+                                { length: installmentSummary.installmentCount },
+                                (_, i) => i + 1,
+                              ).map((r) => {
+                                const isCancelled =
+                                  installmentSummary.cancelledRounds.includes(r);
+                                const matchingV = draft.voucherEntries.filter(
+                                  (v) =>
+                                    v.round === r &&
+                                    (v.voucherNo.trim() ||
+                                      v.voucherDate ||
+                                      v.voucherAmount !== '' ||
+                                      v.paymentDate ||
+                                      v.voucherNotes.trim()),
+                                );
+                                const isPaid = matchingV.some((v) =>
+                                  Boolean(v.paymentDate),
+                                );
+                                const hasVoucher = matchingV.length > 0;
+                                const hasDelivery = recordedDeliveries.some(
+                                  (d) =>
+                                    d.round === r &&
+                                    (d.date || d.docNo?.trim() || d.notes?.trim()),
+                                );
 
-                    <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
-                      รายละเอียดฎีกา / หมายเหตุ
-                      <textarea
-                        rows={4}
-                        value={draft.details.voucherNotes || ''}
-                        onChange={(e) => updateDetail('voucherNotes', e.target.value)}
-                        className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                                return (
+                                  <span
+                                    key={r}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono-num text-[10.5px] font-semibold ${
+                                      isCancelled
+                                        ? 'border-[#e49e9e] bg-[#ffe4e4] text-[#9b2222] line-through'
+                                        : isPaid
+                                          ? 'border-[#9cd8bd] bg-[#dff5eb] text-[#116947]'
+                                          : hasVoucher
+                                            ? 'border-[#9fc0e6] bg-[#e9f2fc] text-[#0f4ca6]'
+                                            : hasDelivery
+                                              ? 'border-[#8ec6f5] bg-white text-[#0b4f94]'
+                                              : 'border-[#d4e3f3] bg-white text-[#5c7899]'
+                                    }`}
+                                  >
+                                    งวด {r}
+                                    {isCancelled
+                                      ? ' (ยกเลิก)'
+                                      : isPaid
+                                        ? ' ✓'
+                                        : hasVoucher
+                                          ? ' · รอเบิก'
+                                          : hasDelivery
+                                            ? ' · ส่งงานแล้ว'
+                                            : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
 
-                    <p className="col-span-full text-[11px] text-[#8aa0b7]">
-                      จำนวนเงินตามฎีกาบันทึกเป็นข้อมูลประกอบ ยังไม่รวมในยอดวงเงินตกลงบนแดชบอร์ด
-                    </p>
+                            {installmentSummary.missingVoucherRounds.length > 0 && (
+                              <p className="mt-2.5 rounded-lg border border-[#f2deb9] bg-[#fff8ed] px-3 py-2 text-[11px] text-[#8d6018]">
+                                ยังจัดทำฎีกาไม่ครบตามงวดงาน (เหลืองวดที่{' '}
+                                {installmentSummary.missingVoucherRounds.join(', ')})
+                                · สถานะโครงการจะยังคงเป็น{' '}
+                                <b>“กำลังดำเนินการ”</b>{' '}
+                                จนกว่าจะจัดทำฎีกาครบทุกงวด หรือกด{' '}
+                                <b>“ยกเลิกงวดงานที่เหลือ / ปิดจบโครงการ”</b>
+                              </p>
+                            )}
+                          </div>
+                        )}
 
-                    {renderCategoryUpload(
-                      'voucher',
-                      'เอกสารฎีกา (PDF, Excel, Word)',
-                    )}
-                  </div>
-                )}
+                        {renderInstallmentCancelPanel()}
+
+                        {unlinkedDeliveries.length > 0 && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#8ec6f5] bg-[#e6f3ff] px-4 py-3 text-xs text-[#0b4f94]">
+                            <span>
+                              พบการส่งมอบงานจากแท็บ 4 ที่ยังไม่มีรายการฎีกาเชื่อมโยง (
+                              {unlinkedDeliveries
+                                .map((d) => `งวดที่ ${d.round}`)
+                                .join(', ')}
+                              )
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraft((prev) => {
+                                  const existingNonBlank = prev.voucherEntries.filter(
+                                    (v) =>
+                                      v.voucherNo.trim() ||
+                                      v.voucherDate ||
+                                      v.voucherAmount !== '' ||
+                                      v.paymentDate ||
+                                      v.voucherNotes.trim(),
+                                  );
+                                  const newEntries = unlinkedDeliveries
+                                    .filter(
+                                      (d) =>
+                                        !installmentSummary.cancelledRounds.includes(
+                                          d.round,
+                                        ),
+                                    )
+                                    .map((d) => ({
+                                      round: d.round,
+                                      voucherNo: '',
+                                      voucherDate: '',
+                                      voucherAmount: '' as const,
+                                      paymentDate: '',
+                                      voucherNotes: d.docNo
+                                        ? `อ้างอิงหนังสือส่งมอบ ${d.docNo}`
+                                        : '',
+                                    }));
+                                  return {
+                                    ...prev,
+                                    voucherEntries: [...existingNonBlank, ...newEntries].sort(
+                                      (a, b) => a.round - b.round,
+                                    ),
+                                  };
+                                })
+                              }
+                              className="whitespace-nowrap rounded-lg bg-[#0f4ca6] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#0b3a80]"
+                            >
+                              ＋ สร้างฎีกาตามงวดส่งมอบ ({unlinkedDeliveries.length} งวด)
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="rounded-2xl border border-[#b4cde8] bg-[#edf4fc] p-4">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <h4 className="flex items-center gap-2 text-xs font-semibold text-[#17406e]">
+                              <span className="grid h-6 w-6 place-items-center rounded-md bg-[#0f4ca6] text-white">
+                                <Clock className="h-3.5 w-3.5" />
+                              </span>
+                              รายการฎีกาและการเบิกจ่ายรายงวด{' '}
+                              <span className="font-mono-num text-[#3d6591]">
+                                ({draft.voucherEntries.length} รายการ)
+                              </span>
+                            </h4>
+                            <button
+                              type="button"
+                              disabled={draft.voucherEntries.length >= 100}
+                              onClick={() =>
+                                setDraft((prev) => {
+                                  const usedVoucherRounds = new Set(
+                                    prev.voucherEntries.map((v) => v.round),
+                                  );
+                                  const nextRound =
+                                    installmentSummary.activeRounds.find(
+                                      (r) => !usedVoucherRounds.has(r),
+                                    ) ??
+                                    prev.deliveryRounds.find(
+                                      (d) =>
+                                        !usedVoucherRounds.has(d.round) &&
+                                        !installmentSummary.cancelledRounds.includes(
+                                          d.round,
+                                        ),
+                                    )?.round ??
+                                    Math.max(
+                                      0,
+                                      ...prev.voucherEntries.map(
+                                        (v) => Number(v.round) || 0,
+                                      ),
+                                    ) + 1;
+                                  return {
+                                    ...prev,
+                                    voucherEntries: [
+                                      ...prev.voucherEntries,
+                                      {
+                                        round: nextRound,
+                                        voucherNo: '',
+                                        voucherDate: '',
+                                        voucherAmount: '',
+                                        paymentDate: '',
+                                        voucherNotes: '',
+                                      },
+                                    ],
+                                  };
+                                })
+                              }
+                              className="whitespace-nowrap text-xs font-semibold text-[#0f58ad] hover:underline disabled:opacity-45"
+                            >
+                              ＋ เพิ่มรายการฎีกา
+                            </button>
+                          </div>
+
+                          {draft.voucherEntries.length === 0 ? (
+                            <p className="text-[11px] text-[#5c7899]">
+                              ยังไม่มีรายการฎีกา กด “＋ เพิ่มรายการฎีกา” เพื่อเพิ่มงวดเบิกจ่าย
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              {draft.voucherEntries.map((vItem, vIdx) => {
+                                const linkedDelivery = recordedDeliveries.find(
+                                  (d) => d.round === vItem.round,
+                                );
+                                const isCancelledRound =
+                                  installmentSummary.cancelledRounds.includes(
+                                    vItem.round,
+                                  );
+
+                                return (
+                                  <div
+                                    key={vIdx}
+                                    className={`relative rounded-xl border p-4 pr-10 ${
+                                      isCancelledRound
+                                        ? 'border-[#e3b8b8] bg-[#fff9f9]'
+                                        : 'border-[#aec7e4] bg-white'
+                                    }`}
+                                  >
+                                    <button
+                                      type="button"
+                                      aria-label={`ลบรายการฎีกาครั้งที่ ${vIdx + 1}`}
+                                      title="ลบรายการฎีกา"
+                                      onClick={() =>
+                                        setDraft((prev) => ({
+                                          ...prev,
+                                          voucherEntries: prev.voucherEntries.filter(
+                                            (_, i) => i !== vIdx,
+                                          ),
+                                        }))
+                                      }
+                                      className="absolute top-3.5 right-3 rounded p-1 text-xs text-[#8ba4bd] hover:bg-[#fff0f1] hover:text-[#b95b68]"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+
+                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                      <span className="rounded-md bg-[#eef4fc] px-2 py-0.5 font-mono-num text-[11px] font-bold text-[#0f4ca6]">
+                                        ฎีกาครั้งที่ {vIdx + 1}
+                                      </span>
+                                      {isCancelledRound && (
+                                        <span className="rounded-md border border-[#e49e9e] bg-[#ffe4e4] px-2 py-0.5 text-[10.5px] font-semibold text-[#9b2222]">
+                                          งวดนี้ถูกยกเลิกแล้ว
+                                        </span>
+                                      )}
+                                      {linkedDelivery &&
+                                      (linkedDelivery.docNo || linkedDelivery.date) ? (
+                                        <span className="rounded-md border border-[#9fdcc2] bg-[#e6f9f1] px-2 py-0.5 text-[10.5px] font-medium text-[#0f7454]">
+                                          เชื่อมโยงการส่งมอบงวดที่ {linkedDelivery.round}
+                                          {linkedDelivery.docNo
+                                            ? ` · เลขที่ ${linkedDelivery.docNo}`
+                                            : ''}
+                                          {linkedDelivery.date
+                                            ? ` (${formatThaiDate(linkedDelivery.date)})`
+                                            : ''}
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-md border border-[#d4e3f3] bg-[#f7fafd] px-2 py-0.5 text-[10.5px] text-[#5c7899]">
+                                          งวดที่ {vItem.round} (ยังไม่มีรายละเอียดส่งมอบในแท็บ 4)
+                                        </span>
+                                      )}
+                                      {vItem.paymentDate ? (
+                                        <span className="rounded-md border border-[#9cd8bd] bg-[#dff5eb] px-2 py-0.5 text-[10.5px] font-semibold text-[#116947]">
+                                          ✓ เบิกจ่ายแล้ว
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-md border border-[#e8c782] bg-[#fff3dc] px-2 py-0.5 text-[10.5px] font-medium text-[#8f5f0c]">
+                                          รอเบิกจ่าย
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                      <label className="block text-[11px] font-semibold text-[#1d4069]">
+                                        เชื่อมโยงงวดส่งมอบงาน
+                                        {installmentSummary.installmentCount > 0 ? (
+                                          <select
+                                            value={vItem.round}
+                                            onChange={(e) =>
+                                              setDraft((prev) => ({
+                                                ...prev,
+                                                voucherEntries: prev.voucherEntries.map(
+                                                  (item, i) =>
+                                                    i === vIdx
+                                                      ? {
+                                                          ...item,
+                                                          round: Number(e.target.value),
+                                                        }
+                                                      : item,
+                                                ),
+                                              }))
+                                            }
+                                            className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-2.5 py-1.5 text-xs font-normal text-[#132d4c]"
+                                          >
+                                            {Array.from(
+                                              {
+                                                length:
+                                                  installmentSummary.installmentCount,
+                                              },
+                                              (_, i) => i + 1,
+                                            ).map((r) => {
+                                              const d = recordedDeliveries.find(
+                                                (dlv) => dlv.round === r,
+                                              );
+                                              const cancelled =
+                                                installmentSummary.cancelledRounds.includes(
+                                                  r,
+                                                );
+                                              return (
+                                                <option key={r} value={r}>
+                                                  งวดที่ {r}
+                                                  {cancelled ? ' (ยกเลิก)' : ''}
+                                                  {d?.docNo ? ` · ${d.docNo}` : ''}
+                                                  {d?.date
+                                                    ? ` (${formatThaiDate(d.date)})`
+                                                    : ''}
+                                                </option>
+                                              );
+                                            })}
+                                            {vItem.round >
+                                              installmentSummary.installmentCount && (
+                                              <option value={vItem.round}>
+                                                งวดที่ {vItem.round} (กำหนดเอง)
+                                              </option>
+                                            )}
+                                          </select>
+                                        ) : recordedDeliveries.length > 0 ? (
+                                          <select
+                                            value={vItem.round}
+                                            onChange={(e) =>
+                                              setDraft((prev) => ({
+                                                ...prev,
+                                                voucherEntries: prev.voucherEntries.map(
+                                                  (item, i) =>
+                                                    i === vIdx
+                                                      ? {
+                                                          ...item,
+                                                          round: Number(e.target.value),
+                                                        }
+                                                      : item,
+                                                ),
+                                              }))
+                                            }
+                                            className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-2.5 py-1.5 text-xs font-normal text-[#132d4c]"
+                                          >
+                                            {recordedDeliveries.map((d) => (
+                                              <option key={d.round} value={d.round}>
+                                                งวดที่ {d.round}
+                                                {d.docNo ? ` · ${d.docNo}` : ''}
+                                                {d.date ? ` (${formatThaiDate(d.date)})` : ''}
+                                              </option>
+                                            ))}
+                                            {!recordedDeliveries.some(
+                                              (d) => d.round === vItem.round,
+                                            ) && (
+                                              <option value={vItem.round}>
+                                                งวดที่ {vItem.round} (กำหนดเอง)
+                                              </option>
+                                            )}
+                                          </select>
+                                        ) : (
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            value={vItem.round}
+                                            onChange={(e) =>
+                                              setDraft((prev) => ({
+                                                ...prev,
+                                                voucherEntries: prev.voucherEntries.map(
+                                                  (item, i) =>
+                                                    i === vIdx
+                                                      ? {
+                                                          ...item,
+                                                          round: Math.max(
+                                                            1,
+                                                            Number(e.target.value) || 1,
+                                                          ),
+                                                        }
+                                                      : item,
+                                                ),
+                                              }))
+                                            }
+                                            className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-2.5 py-1.5 font-mono-num text-xs font-normal text-[#132d4c]"
+                                          />
+                                        )}
+                                      </label>
+
+                                      <label className="block text-[11px] font-semibold text-[#1d4069]">
+                                        เลขที่ฎีกา
+                                        <input
+                                          type="text"
+                                          maxLength={100}
+                                          placeholder="เช่น ฎก.01/2570"
+                                          value={vItem.voucherNo}
+                                          onChange={(e) =>
+                                            setDraft((prev) => ({
+                                              ...prev,
+                                              voucherEntries: prev.voucherEntries.map(
+                                                (item, i) =>
+                                                  i === vIdx
+                                                    ? { ...item, voucherNo: e.target.value }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-1.5 text-xs font-normal text-[#132d4c]"
+                                        />
+                                      </label>
+
+                                      <label className="block text-[11px] font-semibold text-[#1d4069]">
+                                        วันที่ฎีกา
+                                        <input
+                                          type="date"
+                                          value={vItem.voucherDate}
+                                          onChange={(e) =>
+                                            setDraft((prev) => ({
+                                              ...prev,
+                                              voucherEntries: prev.voucherEntries.map(
+                                                (item, i) =>
+                                                  i === vIdx
+                                                    ? {
+                                                        ...item,
+                                                        voucherDate: e.target.value,
+                                                      }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-1.5 font-mono-num text-xs font-normal text-[#132d4c]"
+                                        />
+                                      </label>
+
+                                      <label className="block text-[11px] font-semibold text-[#1d4069]">
+                                        จำนวนเงินตามฎีกา (บาท)
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          value={vItem.voucherAmount}
+                                          onChange={(e) =>
+                                            setDraft((prev) => ({
+                                              ...prev,
+                                              voucherEntries: prev.voucherEntries.map(
+                                                (item, i) =>
+                                                  i === vIdx
+                                                    ? {
+                                                        ...item,
+                                                        voucherAmount:
+                                                          e.target.value === ''
+                                                            ? ''
+                                                            : Number(e.target.value),
+                                                      }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-1.5 font-mono-num text-xs font-normal text-[#132d4c]"
+                                        />
+                                      </label>
+
+                                      <label className="block text-[11px] font-semibold text-[#1d4069]">
+                                        วันที่เบิกจ่าย
+                                        <input
+                                          type="date"
+                                          value={vItem.paymentDate}
+                                          onChange={(e) =>
+                                            setDraft((prev) => ({
+                                              ...prev,
+                                              voucherEntries: prev.voucherEntries.map(
+                                                (item, i) =>
+                                                  i === vIdx
+                                                    ? {
+                                                        ...item,
+                                                        paymentDate: e.target.value,
+                                                      }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-1.5 font-mono-num text-xs font-normal text-[#132d4c]"
+                                        />
+                                      </label>
+
+                                      <label className="block text-[11px] font-semibold text-[#1d4069] sm:col-span-2 lg:col-span-1">
+                                        รายละเอียดฎีกา / หมายเหตุ
+                                        <input
+                                          type="text"
+                                          maxLength={2000}
+                                          placeholder="เช่น ค่าจ้างประจำเดือน…"
+                                          value={vItem.voucherNotes}
+                                          onChange={(e) =>
+                                            setDraft((prev) => ({
+                                              ...prev,
+                                              voucherEntries: prev.voucherEntries.map(
+                                                (item, i) =>
+                                                  i === vIdx
+                                                    ? {
+                                                        ...item,
+                                                        voucherNotes: e.target.value,
+                                                      }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-1.5 text-xs font-normal text-[#132d4c]"
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-[#8aa0b7]">
+                          สามารถเพิ่มฎีกาได้หลายงวดตามการส่งมอบงาน (เช่น จ้างเหมาบริการรายเดือน) · สถานะจะปรับเป็น “เสร็จสิ้น” อัตโนมัติเมื่อทุกงวดที่ส่งมอบบันทึกวันที่เบิกจ่ายครบถ้วน
+                        </p>
+
+                        {renderCategoryUpload(
+                          'voucher',
+                          'เอกสารฎีกา (PDF, Excel, Word, รูปภาพ, ZIP)',
+                        )}
+                      </div>
+                    );
+                  })()}
               </section>
             ))}
 

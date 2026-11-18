@@ -25,10 +25,13 @@ import { PROJECT_TABS } from '../../data/constants';
 import {
   canEditProject,
   createAcceptanceDraft,
+  getEffectiveVoucherEntries,
+  getInstallmentSummary,
   getResponsibleName,
   getStatusUpdatedAt,
   getStepName,
   getTorPreparedDate,
+  getTotalVoucherAmount,
 } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
 import type {
@@ -87,6 +90,9 @@ export function ProjectViewModal({
   const editable = canEditProject(user, project);
   const details = project.projectDetails || {};
   const acceptance = createAcceptanceDraft(details);
+  const installmentSummary = getInstallmentSummary(details);
+  const voucherEntries = installmentSummary.voucherEntries;
+  const totalVoucherAmount = getTotalVoucherAmount(details);
   const statusUpdatedAt = getStatusUpdatedAt(project);
   const activeIndex = Math.max(
     0,
@@ -503,6 +509,30 @@ export function ProjectViewModal({
                       ['ผู้ขาย / ผู้รับจ้าง', project.vendor],
                       ['วงเงินตกลงซื้อ / จ้าง', formatAmountOrDash(project.agreed), 'money'],
                       ['กำหนดส่งมอบ', formatThaiDate(details.deliveryDue)],
+                      [
+                        'จำนวนงวดงาน',
+                        installmentSummary.installmentCount > 0
+                          ? `${installmentSummary.installmentCount} งวด${
+                              installmentSummary.cancelledRounds.length > 0
+                                ? ` (ยกเลิก ${installmentSummary.cancelledRounds.length} งวด · เหลือ ${installmentSummary.activeRounds.length} งวด)`
+                                : ''
+                            }`
+                          : '—',
+                      ],
+                      ...(installmentSummary.cancelledRounds.length > 0
+                        ? ([
+                            [
+                              'งวดงานที่ยกเลิก',
+                              `${installmentSummary.cancelledRounds
+                                .map((r) => `งวดที่ ${r}`)
+                                .join(', ')}${
+                                details.installmentCancelReason
+                                  ? ` (${details.installmentCancelReason})`
+                                  : ''
+                              }`,
+                            ],
+                          ] as [string, string][])
+                        : []),
                       ['รายละเอียดการสั่งซื้อ / สั่งจ้าง', details.orderNotes],
                     ])}
                     {renderCategoryFiles('order')}
@@ -526,27 +556,68 @@ export function ProjectViewModal({
                     <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#47698f]">
                       การส่งมอบ
                     </h4>
+                    {installmentSummary.installmentCount > 0 && (
+                      <p className="mb-2.5 rounded-lg border border-[#c8dcf2] bg-[#eef5fd] px-3 py-2 text-xs text-[#1d4675]">
+                        กำหนดตามใบสั่งซื้อ/จ้าง:{' '}
+                        <b className="font-mono-num">
+                          {installmentSummary.installmentCount} งวด
+                        </b>
+                        {installmentSummary.cancelledRounds.length > 0 && (
+                          <span className="text-[#9b2222]">
+                            {' '}
+                            · ยกเลิกงวดที่{' '}
+                            {installmentSummary.cancelledRounds.join(', ')} (
+                            {details.installmentCancelReason || 'ไม่ระบุเหตุผล'})
+                          </span>
+                        )}
+                      </p>
+                    )}
                     {acceptance.deliveries.some(
                       (d) => d.date || d.docNo || d.notes,
                     ) ? (
                       <div className="space-y-3">
                         {acceptance.deliveries
                           .filter((d) => d.date || d.docNo || d.notes)
-                          .map((d, i) => (
-                            <div
-                              key={i}
-                              className="print-avoid-break rounded-xl border border-[#d8e5f2] bg-[#f7faff] p-3.5"
-                            >
-                              <h5 className="mb-2.5 text-xs font-semibold text-[#51769b]">
-                                ครั้งที่ {i + 1} · งวดที่ {d.round}
-                              </h5>
-                              {renderReportTable([
-                                ['เลขที่หนังสือส่งมอบ / ใบส่งของ', d.docNo],
-                                ['วันที่ส่งมอบ', formatThaiDate(d.date)],
-                                ['รายละเอียดการส่งมอบ', d.notes],
-                              ])}
-                            </div>
-                          ))}
+                          .map((d, i) => {
+                            const linkedVouchers = voucherEntries.filter(
+                              (v) => v.round === d.round,
+                            );
+                            const allPaid =
+                              linkedVouchers.length > 0 &&
+                              linkedVouchers.every((v) => Boolean(v.paymentDate));
+                            return (
+                              <div
+                                key={i}
+                                className="print-avoid-break rounded-xl border border-[#d8e5f2] bg-[#f7faff] p-3.5"
+                              >
+                                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                                  <h5 className="text-xs font-semibold text-[#51769b]">
+                                    ครั้งที่ {i + 1} · งวดที่ {d.round}
+                                  </h5>
+                                  {linkedVouchers.length > 0 && (
+                                    <span
+                                      className={`rounded-md border px-2 py-0.5 text-[10.5px] font-semibold ${
+                                        allPaid
+                                          ? 'border-[#9cd8bd] bg-[#dff5eb] text-[#116947]'
+                                          : 'border-[#9fc0e6] bg-[#e9f2fc] text-[#0f4ca6]'
+                                      }`}
+                                    >
+                                      ฎีกา:{' '}
+                                      {linkedVouchers
+                                        .map((v) => v.voucherNo || 'บันทึกแล้ว')
+                                        .join(', ')}
+                                      {allPaid ? ' (เบิกจ่ายแล้ว)' : ' (รอเบิกจ่าย)'}
+                                    </span>
+                                  )}
+                                </div>
+                                {renderReportTable([
+                                  ['เลขที่หนังสือส่งมอบ / ใบส่งของ', d.docNo],
+                                  ['วันที่ส่งมอบ', formatThaiDate(d.date)],
+                                  ['รายละเอียดการส่งมอบ', d.notes],
+                                ])}
+                              </div>
+                            );
+                          })}
                       </div>
                     ) : (
                       <p className="rounded-lg bg-[#f7fafd] p-3.5 text-xs text-[#8da0b4]">
@@ -585,25 +656,160 @@ export function ProjectViewModal({
                   </>
                 )}
 
-                {tab.id === 'voucher' && (
-                  <>
-                    {renderReportTable([
-                      ['เลขที่ฎีกา', details.voucherNo],
-                      ['วันที่ฎีกา', formatThaiDate(details.voucherDate)],
-                      [
-                        'จำนวนเงินตามฎีกา',
-                        formatAmountOrDash(details.voucherAmount),
-                        'money',
-                      ],
-                      ['วันที่เบิกจ่าย', formatThaiDate(details.paymentDate)],
-                      ['รายละเอียดฎีกา / หมายเหตุ', details.voucherNotes],
-                    ])}
-                    <p className="text-[11px] text-[#8898aa]">
-                      จำนวนเงินตามฎีกาแยกจากวงเงินตกลง ไม่รวมในยอดวงเงินตกลงบนแดชบอร์ด
-                    </p>
-                    {renderCategoryFiles('voucher')}
-                  </>
-                )}
+                {tab.id === 'voucher' &&
+                  (() => {
+                    const paidCount = voucherEntries.filter((v) =>
+                      Boolean(v.paymentDate),
+                    ).length;
+                    const agreedNum = Number(project.agreed) || 0;
+                    const remainingAmt = Math.max(0, agreedNum - totalVoucherAmount);
+
+                    return (
+                      <>
+                        {renderReportTable([
+                          ...(installmentSummary.installmentCount > 0
+                            ? ([
+                                [
+                                  'งวดงานตามสัญญา',
+                                  `${installmentSummary.installmentCount} งวด (ต้องดำเนินการ ${installmentSummary.activeRounds.length} งวด${
+                                    installmentSummary.cancelledRounds.length > 0
+                                      ? `, ยกเลิก ${installmentSummary.cancelledRounds.length} งวด`
+                                      : ''
+                                  })`,
+                                ],
+                                [
+                                  'ความคืบหน้าฎีกา',
+                                  `จัดทำฎีกาแล้ว ${installmentSummary.voucheredActiveRounds.length}/${installmentSummary.activeRounds.length} งวด · เบิกจ่ายแล้ว ${installmentSummary.paidActiveRounds.length}/${installmentSummary.activeRounds.length} งวด`,
+                                ],
+                                ...(installmentSummary.cancelledRounds.length > 0
+                                  ? ([
+                                      [
+                                        'งวดที่ยกเลิก / เหตุผล',
+                                        `งวดที่ ${installmentSummary.cancelledRounds.join(', ')}${
+                                          details.installmentCancelReason
+                                            ? ` · ${details.installmentCancelReason}`
+                                            : ''
+                                        }`,
+                                      ],
+                                    ] as [string, string][])
+                                  : []),
+                              ] as [string, string][])
+                            : []),
+                          [
+                            'สรุปจำนวนฎีกา',
+                            `${voucherEntries.length} ครั้ง (เบิกจ่ายแล้ว ${paidCount} ครั้ง)`,
+                          ],
+                          [
+                            'ยอดรวมตามฎีกาทั้งหมด',
+                            totalVoucherAmount > 0 || voucherEntries.length > 0
+                              ? `${formatMoney(totalVoucherAmount)} บาท`
+                              : '—',
+                            'money',
+                          ],
+                          [
+                            'วงเงินตกลงซื้อ / จ้าง',
+                            formatAmountOrDash(project.agreed),
+                            'money',
+                          ],
+                          ...(agreedNum > 0
+                            ? ([
+                                [
+                                  'คงเหลือจากวงเงินตกลง',
+                                  `${formatMoney(remainingAmt)} บาท`,
+                                  'money',
+                                ],
+                              ] as [string, string, 'money'][])
+                            : []),
+                        ])}
+
+                        <h4 className="mt-5 mb-2.5 text-xs font-semibold text-[#17467d]">
+                          รายการฎีกาและการเบิกจ่ายรายงวด
+                        </h4>
+
+                        {voucherEntries.length > 0 ? (
+                          <div className="space-y-3">
+                            {voucherEntries.map((v, i) => {
+                              const linkedDelivery = acceptance.deliveries.find(
+                                (d) =>
+                                  d.round === v.round &&
+                                  (d.date || d.docNo?.trim() || d.notes?.trim()),
+                              );
+
+                              return (
+                                <div
+                                  key={i}
+                                  className="print-avoid-break rounded-xl border border-[#d8e5f2] bg-[#f7faff] p-3.5"
+                                >
+                                  <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h5 className="text-xs font-semibold text-[#51769b]">
+                                        ฎีกาครั้งที่ {i + 1} · งวดที่ {v.round}
+                                      </h5>
+                                      {linkedDelivery && (
+                                        <span className="rounded-md border border-[#9fdcc2] bg-[#e6f9f1] px-2 py-0.5 text-[10.5px] font-medium text-[#0f7454]">
+                                          ส่งมอบงวดที่ {linkedDelivery.round}
+                                          {linkedDelivery.docNo
+                                            ? ` · ${linkedDelivery.docNo}`
+                                            : ''}
+                                          {linkedDelivery.date
+                                            ? ` (${formatThaiDate(linkedDelivery.date)})`
+                                            : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {v.paymentDate ? (
+                                      <span className="rounded-md border border-[#9cd8bd] bg-[#dff5eb] px-2 py-0.5 text-[10.5px] font-semibold text-[#116947]">
+                                        ✓ เบิกจ่ายแล้ว
+                                      </span>
+                                    ) : (
+                                      <span className="rounded-md border border-[#e8c782] bg-[#fff3dc] px-2 py-0.5 text-[10.5px] font-medium text-[#8f5f0c]">
+                                        รอเบิกจ่าย
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {renderReportTable([
+                                    [
+                                      'งวดส่งมอบที่เชื่อมโยง',
+                                      linkedDelivery
+                                        ? `งวดที่ ${linkedDelivery.round}${
+                                            linkedDelivery.docNo
+                                              ? ` · เลขที่ ${linkedDelivery.docNo}`
+                                              : ''
+                                          }${
+                                            linkedDelivery.date
+                                              ? ` (${formatThaiDate(linkedDelivery.date)})`
+                                              : ''
+                                          }`
+                                        : `งวดที่ ${v.round}`,
+                                    ],
+                                    ['เลขที่ฎีกา', v.voucherNo],
+                                    ['วันที่ฎีกา', formatThaiDate(v.voucherDate)],
+                                    [
+                                      'จำนวนเงินตามฎีกา',
+                                      formatAmountOrDash(v.voucherAmount),
+                                      'money',
+                                    ],
+                                    ['วันที่เบิกจ่าย', formatThaiDate(v.paymentDate)],
+                                    ['รายละเอียดฎีกา / หมายเหตุ', v.voucherNotes],
+                                  ])}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="rounded-lg bg-[#f7fafd] p-3.5 text-xs text-[#8da0b4]">
+                            ยังไม่มีรายการฎีกา
+                          </p>
+                        )}
+
+                        <p className="mt-3 text-[11px] text-[#8898aa]">
+                          จำนวนเงินตามฎีกาแยกจากวงเงินตกลง ไม่รวมในยอดวงเงินตกลงบนแดชบอร์ด
+                        </p>
+                        {renderCategoryFiles('voucher')}
+                      </>
+                    );
+                  })()}
               </section>
             ))}
           </div>

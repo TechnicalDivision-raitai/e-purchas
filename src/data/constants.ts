@@ -149,12 +149,13 @@ export const TABLE_COLUMNS: Array<{
   width: string;
   sortable?: boolean;
 }> = [
-  { key: 'code', label: 'เลขทะเบียน', width: '11%', sortable: true },
-  { key: 'year', label: 'ปีงบฯ', width: '7%', sortable: true },
-  { key: 'title', label: 'ชื่อโครงการ / หน่วยงาน', width: '29%', sortable: true },
-  { key: 'agreed', label: 'วงเงินตกลง (บาท)', width: '13%', sortable: false },
-  { key: 'responsibleName', label: 'ผู้รับผิดชอบ', width: '14%', sortable: false },
-  { key: 'status', label: 'สถานะ', width: '13%', sortable: false },
+  { key: 'code', label: 'เลขทะเบียน', width: '10%', sortable: true },
+  { key: 'year', label: 'ปีงบฯ', width: '6%', sortable: true },
+  { key: 'title', label: 'ชื่อโครงการ / หน่วยงาน', width: '24%', sortable: true },
+  { key: 'responsibleName', label: 'ผู้รับผิดชอบ', width: '11%', sortable: false },
+  { key: 'agreed', label: 'วงเงินตกลง (บาท)', width: '11%', sortable: false },
+  { key: 'vendor', label: 'ผู้ขาย / ผู้รับจ้าง', width: '15%', sortable: false },
+  { key: 'status', label: 'สถานะ', width: '11%', sortable: false },
 ];
 
 export const DEFAULT_STEP_NAMES: string[] = PROJECT_TABS.map(

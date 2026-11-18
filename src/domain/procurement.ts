@@ -18,6 +18,7 @@ import type {
   SortDirection,
   SortKey,
   UserAccount,
+  VoucherEntry,
   WorkflowStep,
 } from '../types/procurement';
 import { isValidIsoDate, todayBangkok } from '../utils/date';
@@ -147,6 +148,8 @@ export function deriveProgressFromTabs(
       files.some((f) => f.category === 'tor'),
   );
 
+  const summary = getInstallmentSummary(details);
+
   const hasOrder = Boolean(
     project.docNo?.trim() ||
       project.docDate ||
@@ -154,6 +157,7 @@ export function deriveProgressFromTabs(
       Number(project.agreed) > 0 ||
       details.deliveryDue ||
       details.orderNotes?.trim() ||
+      summary.installmentCount > 0 ||
       files.some((f) => f.category === 'order'),
   );
 
@@ -171,8 +175,10 @@ export function deriveProgressFromTabs(
       files.some((f) => f.category === 'acceptance'),
   );
 
+  const voucherEntries = summary.voucherEntries;
   const hasVoucher = Boolean(
-    details.voucherNo?.trim() ||
+    voucherEntries.length > 0 ||
+      details.voucherNo?.trim() ||
       details.voucherDate ||
       (details.voucherAmount !== '' &&
         details.voucherAmount != null &&
@@ -201,7 +207,34 @@ export function deriveProgressFromTabs(
 
   let status: ProjectStatus = 'รอจัดทำTOR และราคากลาง';
   if (hasVoucher) {
-    status = details.paymentDate ? 'เสร็จสิ้น' : 'รออนุมัติ';
+    if (summary.installmentCount > 0) {
+      if (summary.activeRounds.length === 0) {
+        status = summary.allVouchersPaid && voucherEntries.length > 0 ? 'เสร็จสิ้น' : 'ยกเลิก';
+      } else if (summary.missingVoucherRounds.length > 0) {
+        status = 'กำลังดำเนินการ';
+      } else {
+        const allActivePaid = summary.activeRounds.every((r) =>
+          voucherEntries.some((v) => v.round === r && Boolean(v.paymentDate)),
+        );
+        const allRecordedPaid = voucherEntries.every((v) => Boolean(v.paymentDate));
+        status = allActivePaid && allRecordedPaid ? 'เสร็จสิ้น' : 'รออนุมัติ';
+      }
+    } else {
+      const validDeliveries = (details.deliveryRounds || []).filter(
+        (d) => d.date || d.docNo?.trim() || d.notes?.trim(),
+      );
+      if (voucherEntries.length > 0) {
+        const allVouchersPaid = voucherEntries.every((v) => Boolean(v.paymentDate));
+        const allDeliveriesPaid =
+          validDeliveries.length === 0 ||
+          validDeliveries.every((d) =>
+            voucherEntries.some((v) => v.round === d.round && Boolean(v.paymentDate)),
+          );
+        status = allVouchersPaid && allDeliveriesPaid ? 'เสร็จสิ้น' : 'รออนุมัติ';
+      } else {
+        status = details.paymentDate ? 'เสร็จสิ้น' : 'รออนุมัติ';
+      }
+    }
   } else if (hasAcceptance) {
     const completedRounds = (details.acceptanceRounds || []).filter((r) => r.result);
     const latestResult = completedRounds[completedRounds.length - 1]?.result;
@@ -211,12 +244,27 @@ export function deriveProgressFromTabs(
     ) {
       status = 'ส่งกลับแก้ไข';
     } else if (latestResult === 'ตรวจรับถูกต้องครบถ้วน') {
-      status = 'รออนุมัติ';
+      if (summary.installmentCount > 0) {
+        const allActiveAccepted =
+          summary.activeRounds.length > 0 &&
+          summary.activeRounds.every((r) =>
+            (details.acceptanceRounds || []).some(
+              (ar) => ar.round === r && ar.result === 'ตรวจรับถูกต้องครบถ้วน',
+            ),
+          );
+        status = allActiveAccepted ? 'รออนุมัติ' : 'กำลังดำเนินการ';
+      } else {
+        status = 'รออนุมัติ';
+      }
     } else {
       status = 'กำลังดำเนินการ';
     }
   } else if (hasOrder) {
-    status = 'กำลังดำเนินการ';
+    if (summary.installmentCount > 0 && summary.activeRounds.length === 0) {
+      status = 'ยกเลิก';
+    } else {
+      status = 'กำลังดำเนินการ';
+    }
   } else if (hasTor) {
     status = 'อยู่ระหว่างสั่งซื้อสั่งจ้าง';
   }
@@ -471,6 +519,189 @@ export function cleanDeliveryRounds(rows: Partial<DeliveryRound>[]): DeliveryRou
       }
       return r;
     });
+}
+
+export function getEffectiveVoucherEntries(
+  details: ProjectDetails = {},
+): VoucherEntry[] {
+  if (Array.isArray(details.voucherEntries)) {
+    return details.voucherEntries.filter(
+      (v) =>
+        v.voucherNo?.trim() ||
+        v.voucherDate ||
+        (v.voucherAmount !== '' && v.voucherAmount != null) ||
+        v.paymentDate ||
+        v.voucherNotes?.trim(),
+    );
+  }
+
+  const hasLegacy = Boolean(
+    details.voucherNo?.trim() ||
+      details.voucherDate ||
+      (details.voucherAmount !== '' && details.voucherAmount != null) ||
+      details.paymentDate ||
+      details.voucherNotes?.trim(),
+  );
+  if (!hasLegacy) return [];
+
+  const firstDeliveryRound = details.deliveryRounds?.[0]?.round || 1;
+  return [
+    {
+      round: firstDeliveryRound,
+      voucherNo: details.voucherNo || '',
+      voucherDate: details.voucherDate || '',
+      voucherAmount: details.voucherAmount ?? '',
+      paymentDate: details.paymentDate || '',
+      voucherNotes: details.voucherNotes || '',
+    },
+  ];
+}
+
+export function getTotalVoucherAmount(details: ProjectDetails = {}): number {
+  const entries = getEffectiveVoucherEntries(details);
+  if (entries.length > 0) {
+    return entries.reduce((sum, v) => sum + (Number(v.voucherAmount) || 0), 0);
+  }
+  return Number(details.voucherAmount || 0);
+}
+
+export function cleanVoucherEntries(rows: Partial<VoucherEntry>[]): VoucherEntry[] {
+  if (!Array.isArray(rows) || rows.length > 100) {
+    throw new Error('บันทึกรายการฎีกาได้ไม่เกิน 100 ครั้ง');
+  }
+
+  return rows
+    .map((r) => ({
+      round: Number(r.round) || 1,
+      voucherNo: String(r.voucherNo || '').trim(),
+      voucherDate: String(r.voucherDate || ''),
+      voucherAmount:
+        r.voucherAmount === '' || r.voucherAmount == null
+          ? ('' as const)
+          : Number(r.voucherAmount),
+      paymentDate: String(r.paymentDate || ''),
+      voucherNotes: String(r.voucherNotes || '').trim(),
+    }))
+    .filter(
+      (r) =>
+        r.voucherNo ||
+        r.voucherDate ||
+        r.voucherAmount !== '' ||
+        r.paymentDate ||
+        r.voucherNotes,
+    )
+    .map((r) => {
+      if (!Number.isInteger(r.round) || r.round < 1) {
+        throw new Error('งวดที่เชื่อมโยงกับฎีกาต้องเป็นจำนวนเต็มตั้งแต่ 1');
+      }
+      if (r.voucherNo.length > 100) {
+        throw new Error('เลขที่ฎีกายาวเกิน 100 ตัวอักษร');
+      }
+      if (r.voucherDate && !isValidIsoDate(r.voucherDate)) {
+        throw new Error('วันที่ฎีกาไม่ถูกต้อง');
+      }
+      if (
+        r.voucherAmount !== '' &&
+        (!Number.isFinite(r.voucherAmount) || r.voucherAmount < 0)
+      ) {
+        throw new Error('จำนวนเงินตามฎีกาต้องเป็นตัวเลขตั้งแต่ศูนย์ขึ้นไป');
+      }
+      if (r.paymentDate && !isValidIsoDate(r.paymentDate)) {
+        throw new Error('วันที่เบิกจ่ายไม่ถูกต้อง');
+      }
+      if (r.voucherNotes.length > 2000) {
+        throw new Error('รายละเอียดฎีกายาวเกิน 2,000 ตัวอักษร');
+      }
+      return r;
+    });
+}
+
+export function cleanInstallmentCount(val: unknown): number | '' {
+  if (val === '' || val == null) return '';
+  const num = Number(val);
+  if (!Number.isInteger(num) || num < 1 || num > 100) {
+    throw new Error('จำนวนงวดงานต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 100 งวด');
+  }
+  return num;
+}
+
+export function cleanCancelledRounds(
+  rounds: unknown,
+  installmentCount: number | '',
+): number[] {
+  const max = Number(installmentCount) || 0;
+  if (!Array.isArray(rounds) || max < 1) return [];
+  const valid = new Set<number>();
+  for (const r of rounds) {
+    const num = Number(r);
+    if (Number.isInteger(num) && num >= 1 && num <= max) {
+      valid.add(num);
+    }
+  }
+  return [...valid].sort((a, b) => a - b);
+}
+
+export interface InstallmentSummary {
+  installmentCount: number;
+  cancelledRounds: number[];
+  activeRounds: number[];
+  voucherEntries: VoucherEntry[];
+  voucheredActiveRounds: number[];
+  paidActiveRounds: number[];
+  missingVoucherRounds: number[];
+  allVouchersPaid: boolean;
+}
+
+export function getInstallmentSummary(details: ProjectDetails = {}): InstallmentSummary {
+  const rawCount = Number(details.installmentCount);
+  const installmentCount =
+    Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 100 ? rawCount : 0;
+
+  const cancelledRounds = cleanCancelledRounds(details.cancelledRounds, installmentCount || '');
+  const cancelledSet = new Set(cancelledRounds);
+  const allRounds = Array.from({ length: installmentCount }, (_, i) => i + 1);
+  const activeRounds = allRounds.filter((r) => !cancelledSet.has(r));
+
+  const voucherEntries = getEffectiveVoucherEntries(details);
+  const voucheredSet = new Set(voucherEntries.map((v) => v.round));
+  const paidSet = new Set(
+    voucherEntries.filter((v) => Boolean(v.paymentDate)).map((v) => v.round),
+  );
+
+  const voucheredActiveRounds = activeRounds.filter((r) => voucheredSet.has(r));
+  const paidActiveRounds = activeRounds.filter((r) => paidSet.has(r));
+  const missingVoucherRounds = activeRounds.filter((r) => !voucheredSet.has(r));
+  const allVouchersPaid =
+    voucherEntries.length > 0 && voucherEntries.every((v) => Boolean(v.paymentDate));
+
+  return {
+    installmentCount,
+    cancelledRounds,
+    activeRounds,
+    voucherEntries,
+    voucheredActiveRounds,
+    paidActiveRounds,
+    missingVoucherRounds,
+    allVouchersPaid,
+  };
+}
+
+export function createVoucherDraft(details: ProjectDetails = {}): VoucherEntry[] {
+  const effective = getEffectiveVoucherEntries(details);
+  if (effective.length > 0) {
+    return structuredClone(effective);
+  }
+  const firstRound = details.deliveryRounds?.[0]?.round || 1;
+  return [
+    {
+      round: firstRound,
+      voucherNo: '',
+      voucherDate: '',
+      voucherAmount: '',
+      paymentDate: '',
+      voucherNotes: '',
+    },
+  ];
 }
 
 export function createAcceptanceDraft(details: ProjectDetails = {}): {

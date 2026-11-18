@@ -94,18 +94,18 @@ export function ProjectsTablePanel({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-[11.5px]">
+        <table className="w-full min-w-[840px] table-fixed border-collapse text-left text-[11.5px]">
           <colgroup>
             {TABLE_COLUMNS.map((c) => (
               <col
                 key={c.key}
                 style={{
                   width:
-                    c.key === 'title' && user.role !== 'admin' ? '33%' : c.width,
+                    c.key === 'title' && user.role !== 'admin' ? '28%' : c.width,
                 }}
               />
             ))}
-            <col style={{ width: user.role === 'admin' ? '13%' : '9%' }} />
+            <col style={{ width: user.role === 'admin' ? '12%' : '8%' }} />
           </colgroup>
           <thead>
             <tr className="border-b border-[#b8d0eb] bg-[#d8e7f8] text-[#143966]">
@@ -184,9 +184,6 @@ export function ProjectsTablePanel({
                       {r.department} · {r.type}
                     </div>
                   </td>
-                  <td className="px-3.5 py-3.5 text-right align-middle font-mono-num font-medium text-[#153152]">
-                    {formatMoney(r.agreed)}
-                  </td>
                   <td className="px-3.5 py-3.5 align-middle">
                     <div className="leading-snug text-[#1c3c61]">
                       {getResponsibleName(r)
@@ -199,9 +196,12 @@ export function ProjectsTablePanel({
                           </span>
                         ))}
                     </div>
-                    <div className="mt-0.5 text-[10px] text-[#537091]">
-                      {r.ack ? '✓ รับทราบแล้ว' : 'รอรับทราบ'}
-                    </div>
+                  </td>
+                  <td className="px-3.5 py-3.5 text-right align-middle font-mono-num font-medium text-[#153152]">
+                    {formatMoney(r.agreed)}
+                  </td>
+                  <td className="px-3.5 py-3.5 align-middle text-[#24456b] break-words">
+                    {r.vendor?.trim() || '—'}
                   </td>
                   <td className="px-3.5 py-3.5 text-center align-middle">
                     <StatusBadge status={r.status} />

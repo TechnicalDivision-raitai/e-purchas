@@ -24,9 +24,15 @@ import { isValidIsoDate } from '../utils/date';
 import { normalizeCodeKey, triggerDownloadUrl } from '../utils/format';
 import {
   cleanAcceptanceRounds,
+  cleanCancelledRounds,
   cleanCommitteeMembers,
+  cleanDeliveryRounds,
+  cleanInstallmentCount,
+  cleanVoucherEntries,
   getAttachmentMeta,
+  getEffectiveVoucherEntries,
   getTorPreparedDate,
+  getTotalVoucherAmount,
   normalizeLegacyStepId,
   validateProject,
 } from './procurement';
@@ -65,6 +71,9 @@ export const EXCEL_SCHEMA: Record<string, string[]> = {
     'วงเงินตกลง',
     'กำหนดส่งมอบ',
     'รายละเอียดสั่งซื้อสั่งจ้าง',
+    'จำนวนงวดงาน',
+    'งวดงานที่ยกเลิก',
+    'เหตุผลยกเลิกงวดงาน',
   ],
   'ตั้งกรรมการตรวจรับ': [
     'รหัสโครงการ',
@@ -82,7 +91,18 @@ export const EXCEL_SCHEMA: Record<string, string[]> = {
   ],
   'กรรมการTOR': ['รหัสโครงการ', 'ลำดับ', 'ชื่อกรรมการ', 'ตำแหน่ง', 'หน้าที่'],
   'กรรมการตรวจรับ': ['รหัสโครงการ', 'ลำดับ', 'ชื่อกรรมการ', 'ตำแหน่ง', 'หน้าที่'],
+  'การส่งมอบ': ['รหัสโครงการ', 'ลำดับ', 'งวดที่', 'เลขที่หนังสือส่งมอบ', 'วันที่ส่งมอบ', 'รายละเอียด'],
   'ผลตรวจรับ': ['รหัสโครงการ', 'ลำดับ', 'งวดที่', 'วันที่ตรวจรับ', 'ผลตรวจรับ', 'รายละเอียด'],
+  'รายการฎีกา': [
+    'รหัสโครงการ',
+    'ลำดับ',
+    'งวดที่',
+    'เลขที่ฎีกา',
+    'วันที่ฎีกา',
+    'จำนวนเงินฎีกา',
+    'วันที่เบิกจ่าย',
+    'รายละเอียดฎีกา',
+  ],
   'ข้อมูลขั้นตอน': [
     'รหัสโครงการ',
     'ขั้นตอน',
@@ -113,7 +133,7 @@ export function calculateFinancialSums(rows: ProjectRecord[]): FinancialSums {
     budget: eligible.reduce((s, r) => s + Number(r.budget || 0), 0),
     reference: eligible.reduce((s, r) => s + Number(r.reference || 0), 0),
     agreed: eligible.reduce((s, r) => s + Number(r.agreed || 0), 0),
-    voucher: eligible.reduce((s, r) => s + Number(r.projectDetails?.voucherAmount || 0), 0),
+    voucher: eligible.reduce((s, r) => s + getTotalVoucherAmount(r.projectDetails), 0),
   };
 }
 
@@ -158,6 +178,9 @@ export function buildExcelTables(rows: ProjectRecord[]): WorkbookTables {
       Number(r.agreed) || 0,
       d.deliveryDue || '',
       d.orderNotes || '',
+      d.installmentCount ? Number(d.installmentCount) : '',
+      (d.cancelledRounds || []).join(','),
+      d.installmentCancelReason || '',
     ]);
 
     tables['ตั้งกรรมการตรวจรับ'].push([
@@ -186,6 +209,17 @@ export function buildExcelTables(rows: ProjectRecord[]): WorkbookTables {
       });
     }
 
+    (d.deliveryRounds || []).forEach((dlv, i) => {
+      tables['การส่งมอบ'].push([
+        code,
+        i + 1,
+        Number(dlv.round) || 1,
+        dlv.docNo || '',
+        dlv.date || '',
+        dlv.notes || '',
+      ]);
+    });
+
     (d.acceptanceRounds || []).forEach((v, i) => {
       tables['ผลตรวจรับ'].push([
         code,
@@ -194,6 +228,19 @@ export function buildExcelTables(rows: ProjectRecord[]): WorkbookTables {
         v.date,
         v.result,
         v.notes,
+      ]);
+    });
+
+    getEffectiveVoucherEntries(d).forEach((ve, i) => {
+      tables['รายการฎีกา'].push([
+        code,
+        i + 1,
+        Number(ve.round) || 1,
+        ve.voucherNo || '',
+        ve.voucherDate || '',
+        ve.voucherAmount == null || ve.voucherAmount === '' ? '' : Number(ve.voucherAmount),
+        ve.paymentDate || '',
+        ve.voucherNotes || '',
       ]);
     });
 
@@ -316,12 +363,20 @@ export function previewExcelImport(
       throw new Error(`ไม่รองรับชีต ${sheetName}`);
     }
 
-    if (
-      !Array.isArray(matrix) ||
-      JSON.stringify(matrix[0]) !== JSON.stringify(EXCEL_SCHEMA[sheetName])
-    ) {
+    const expectedHeaders = EXCEL_SCHEMA[sheetName];
+    const legacyOrderHeaders =
+      sheetName === 'สั่งซื้อสั่งจ้าง' ? expectedHeaders.slice(0, 7) : null;
+    const headerMatches =
+      Array.isArray(matrix) &&
+      (JSON.stringify(matrix[0]) === JSON.stringify(expectedHeaders) ||
+        (legacyOrderHeaders &&
+          JSON.stringify(matrix[0]) === JSON.stringify(legacyOrderHeaders)));
+
+    if (!headerMatches) {
       throw new Error(`หัวคอลัมน์ชีต ${sheetName} ไม่ตรงกับแม่แบบ`);
     }
+
+    const activeHeaderLength = matrix[0].length;
 
     parsed[sheetName] = [];
     matrix.slice(1).forEach((rowArr, i) => {
@@ -335,8 +390,8 @@ export function previewExcelImport(
         throw new Error('เกิน 5,000 แถวต่อชุด กรุณาแบ่งไฟล์');
       }
       if (
-        rowArr.length > EXCEL_SCHEMA[sheetName].length &&
-        rowArr.slice(EXCEL_SCHEMA[sheetName].length).some((v) => v !== '' && v != null)
+        rowArr.length > activeHeaderLength &&
+        rowArr.slice(activeHeaderLength).some((v) => v !== '' && v != null)
       ) {
         pushError(sheetName, i + 2, rowArr[0], 'มีข้อมูลเกินคอลัมน์ที่รองรับ');
         return;
@@ -462,6 +517,19 @@ export function previewExcelImport(
             r.agreed = amount(4);
             d.deliveryDue = text(5);
             d.orderNotes = text(6);
+            if (a[7] !== '' && a[7] != null) {
+              d.installmentCount = cleanInstallmentCount(a[7]);
+            }
+            if (a[8] !== '' && a[8] != null) {
+              const rawRounds = String(a[8])
+                .split(',')
+                .map((s) => Number(s.trim()))
+                .filter((n) => Number.isInteger(n) && n >= 1);
+              d.cancelledRounds = rawRounds;
+            }
+            if (a[9] !== '' && a[9] != null) {
+              d.installmentCancelReason = text(9);
+            }
           } else if (sheetName === 'ตั้งกรรมการตรวจรับ') {
             d.committeeNo = doc(1);
             d.committeeDate = text(2);
@@ -473,7 +541,15 @@ export function previewExcelImport(
             d.paymentDate = text(4);
             d.voucherNotes = text(5);
           }
-        } else if (['กรรมการTOR', 'กรรมการตรวจรับ', 'ผลตรวจรับ'].includes(sheetName)) {
+        } else if (
+          [
+            'กรรมการTOR',
+            'กรรมการตรวจรับ',
+            'การส่งมอบ',
+            'ผลตรวจรับ',
+            'รายการฎีกา',
+          ].includes(sheetName)
+        ) {
           const seqNum = a[1];
           if (typeof seqNum !== 'number' || !Number.isInteger(seqNum) || seqNum < 1) {
             throw new Error('ลำดับต้องเป็นเซลล์ตัวเลขจำนวนเต็มบวก');
@@ -484,7 +560,22 @@ export function previewExcelImport(
           }
           group.sequences.add(seqKey);
 
-          if (sheetName === 'ผลตรวจรับ') {
+          if (sheetName === 'การส่งมอบ') {
+            if (typeof a[2] !== 'number') {
+              throw new Error('งวดที่ต้องเป็นเซลล์ตัวเลข');
+            }
+            if (a[3] !== '' && a[3] != null && typeof a[3] !== 'string') {
+              throw new Error('เลขที่หนังสือส่งมอบต้องเป็นเซลล์ข้อความ');
+            }
+            d.deliveryRounds ??= [];
+            d.deliveryRounds.push({
+              sequence: seqNum,
+              round: a[2],
+              docNo: String(a[3] || ''),
+              date: String(a[4] || ''),
+              notes: String(a[5] || ''),
+            });
+          } else if (sheetName === 'ผลตรวจรับ') {
             if (typeof a[2] !== 'number') {
               throw new Error('งวดที่ต้องเป็นเซลล์ตัวเลข');
             }
@@ -495,6 +586,30 @@ export function previewExcelImport(
               date: String(a[3] || ''),
               result: String(a[4] || '') as AcceptanceRoundResultOrEmpty,
               notes: String(a[5] || ''),
+            });
+          } else if (sheetName === 'รายการฎีกา') {
+            if (typeof a[2] !== 'number') {
+              throw new Error('งวดที่ต้องเป็นเซลล์ตัวเลข');
+            }
+            if (a[3] !== '' && a[3] != null && typeof a[3] !== 'string') {
+              throw new Error('เลขที่ฎีกาต้องเป็นเซลล์ข้อความ');
+            }
+            let voucherAmt: number | '' = '';
+            if (a[5] !== '' && a[5] != null) {
+              if (typeof a[5] !== 'number' || !Number.isFinite(a[5]) || a[5] < 0) {
+                throw new Error('จำนวนเงินฎีกาต้องเป็นเซลล์ตัวเลขตั้งแต่ศูนย์');
+              }
+              voucherAmt = a[5];
+            }
+            d.voucherEntries ??= [];
+            d.voucherEntries.push({
+              sequence: seqNum,
+              round: a[2],
+              voucherNo: String(a[3] || ''),
+              voucherDate: String(a[4] || ''),
+              voucherAmount: voucherAmt,
+              paymentDate: String(a[6] || ''),
+              voucherNotes: String(a[7] || ''),
             });
           } else {
             const memberKey = sheetName === 'กรรมการTOR' ? 'torMembers' : 'acceptanceMembers';
@@ -635,13 +750,40 @@ export function previewExcelImport(
       if (d.acceptanceMembers) {
         d.acceptanceMembers.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
       }
+      if (d.deliveryRounds) {
+        d.deliveryRounds.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+      }
       if (d.acceptanceRounds) {
         d.acceptanceRounds.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
       }
 
       d.torMembers = cleanCommitteeMembers(d.torMembers || []);
       d.acceptanceMembers = cleanCommitteeMembers(d.acceptanceMembers || []);
+      d.deliveryRounds = cleanDeliveryRounds(d.deliveryRounds || []);
       d.acceptanceRounds = cleanAcceptanceRounds(d.acceptanceRounds || []);
+      d.installmentCount = cleanInstallmentCount(d.installmentCount);
+      d.cancelledRounds = cleanCancelledRounds(d.cancelledRounds, d.installmentCount);
+
+      if (d.voucherEntries) {
+        d.voucherEntries.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+        d.voucherEntries = cleanVoucherEntries(d.voucherEntries);
+        if (d.voucherEntries.length > 0 && !group.singles.has('ฎีกา')) {
+          const allPaid = d.voucherEntries.every((v) => Boolean(v.paymentDate));
+          d.voucherNo = d.voucherEntries.map((v) => v.voucherNo).filter(Boolean).join(', ');
+          d.voucherDate = d.voucherEntries[d.voucherEntries.length - 1]?.voucherDate || '';
+          d.voucherAmount = d.voucherEntries.reduce(
+            (sum, v) => sum + (Number(v.voucherAmount) || 0),
+            0,
+          );
+          d.paymentDate = allPaid
+            ? d.voucherEntries.map((v) => v.paymentDate).filter(Boolean).sort().pop() || ''
+            : '';
+          d.voucherNotes = d.voucherEntries
+            .map((v) => (v.voucherNotes ? `งวด ${v.round}: ${v.voucherNotes}` : ''))
+            .filter(Boolean)
+            .join(' | ');
+        }
+      }
 
       const dateKeys: Array<keyof ProjectDetails> = [
         'torOrderDate',
