@@ -242,6 +242,7 @@ export interface ImportPlan {
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'local' | 'error';
 
 export type SarabanDocCategory =
+  | 'general_approval'
   | 'tor_order'
   | 'tor_approval'
   | 'ref_price'
@@ -257,6 +258,10 @@ export interface SarabanAttachment {
 }
 
 export interface SarabanQueuePayload {
+  attachmentOnly?: boolean;
+  targetSection?: string;
+  orderNo?: string;
+  orderDate?: string;
   assigneeName?: string;
   notes?: string;
   torAuthor?: string;

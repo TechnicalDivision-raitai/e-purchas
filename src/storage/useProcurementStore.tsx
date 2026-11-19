@@ -19,6 +19,7 @@ import {
   VIEW_STORAGE_KEY,
 } from '../data/constants';
 import { SARABAN_CATEGORY_META } from '../data/constants';
+import { buildPersonPositionMap } from '../domain/personPositions';
 import {
   applySarabanQueueItemToProject,
   getInboxProjects,
@@ -627,14 +628,20 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
       }
 
       const meta = SARABAN_CATEGORY_META[item.docCategory];
+      const refSuffix = item.bookNo
+        ? ` เลขที่ ${item.bookNo}`
+        : item.attachment?.fileName
+          ? ` (${item.attachment.fileName})`
+          : ` คิว ${item.queueId}`;
       const ok = commit((draft) => {
         const target = draft.rows.find((r) => r.id === targetProject.id);
         if (!target) throw new Error('ไม่พบโครงการปลายทาง');
-        applySarabanQueueItemToProject(target, item);
+        const positionMap = buildPersonPositionMap(draft.rows);
+        applySarabanQueueItemToProject(target, item, positionMap);
         target.history.push({
           at: new Date().toISOString(),
           by: user.name,
-          action: `รับข้อมูลจากสารบรรณ (${meta.label}) เลขที่ ${item.bookNo || item.queueId}`,
+          action: `รับข้อมูลจากสารบรรณ (${meta.label})${refSuffix}`,
         });
       });
 

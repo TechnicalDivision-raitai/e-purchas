@@ -26,6 +26,7 @@ import type {
 } from '../types/procurement';
 import { isValidIsoDate, todayBangkok, uid } from '../utils/date';
 import { normalizeCodeKey } from '../utils/format';
+import { lookupPersonPosition } from './personPositions';
 
 export function isTerminalStatus(status: ProjectStatus | string): boolean {
   return TERMINAL_STATUSES.includes(status as ProjectStatus);
@@ -760,9 +761,56 @@ function appendUniqueNoteLine(existing: string | undefined, line: string): strin
   return `${current}\n${cleanLine}`;
 }
 
+function appendSarabanAttachmentIfPresent(
+  target: ProjectRecord,
+  item: SarabanQueueItem,
+  category: AttachmentCategory,
+): void {
+  const fileUrl = String(item.attachment?.fileUrl || '').trim();
+  if (!fileUrl) return;
+  const fileName =
+    String(item.attachment?.fileName || '').trim() || 'เอกสารแนบจากสารบรรณ';
+
+  target.files ??= [];
+  const duplicateFile = target.files.some(
+    (f) =>
+      f.url === fileUrl || (f.category === category && f.name === fileName),
+  );
+  if (!duplicateFile) {
+    target.files.push({
+      id: uid(),
+      name: fileName,
+      type: item.attachment?.mimeType || 'application/pdf',
+      size: Number(item.attachment?.fileSize || 0),
+      category,
+      url: fileUrl,
+    });
+  }
+}
+
+function parsePositiveNumber(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function parseNonNegativeNumber(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) && num >= 0 ? num : null;
+}
+
+function parsePositiveInteger(value: unknown): number | null {
+  const num = parsePositiveNumber(value);
+  return num !== null && Number.isInteger(num) ? num : null;
+}
+
 export function applySarabanQueueItemToProject(
   target: ProjectRecord,
   item: SarabanQueueItem,
+  personPositionMap?: Map<string, string>,
 ): void {
   if (!SARABAN_ALLOWED_CATEGORIES.includes(item.docCategory)) {
     throw new Error('หมวดเอกสารจากสารบรรณไม่รองรับในระบบจัดซื้อจัดจ้าง');
@@ -773,160 +821,194 @@ export function applySarabanQueueItemToProject(
   const d = target.projectDetails;
   const payload = item.payload || {};
   const meta = SARABAN_CATEGORY_META[item.docCategory];
+  const bookNo = String(item.bookNo || '').trim();
   const bookDate = isValidIsoDate(item.bookDate) ? item.bookDate : '';
-  const refLabel = [item.bookNo, item.subject].filter(Boolean).join(' · ');
+  const subject = String(item.subject || '').trim();
 
+  // 1. general_approval: แนบเฉพาะไฟล์เข้าหน้าข้อมูลทั่วไปเท่านั้น ห้ามแก้ไขข้อมูลตั้งต้นใดๆ ของโครงการ
+  if (item.docCategory === 'general_approval') {
+    appendSarabanAttachmentIfPresent(target, item, 'general');
+    return;
+  }
+
+  // 2. tor_order: แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง (อัปเดตเฉพาะช่องที่มีค่าส่งมาจริง)
   if (item.docCategory === 'tor_order') {
-    if (item.bookNo) d.torOrderNo = item.bookNo;
-    if (bookDate) d.torOrderDate = bookDate;
+    const orderNo = String(payload.orderNo || bookNo || '').trim();
+    const rawOrderDate = String(payload.orderDate || bookDate || '').trim();
+    const orderDate = isValidIsoDate(rawOrderDate) ? rawOrderDate : '';
     const assigneeName = String(payload.assigneeName || '').trim();
+    const notes = String(payload.notes || '').trim();
+
+    if (orderNo) {
+      d.torOrderNo = orderNo;
+    }
+    if (orderDate) {
+      d.torOrderDate = orderDate;
+    }
     if (assigneeName) {
+      const boundPos = personPositionMap
+        ? lookupPersonPosition(personPositionMap, assigneeName)
+        : '';
+      target.responsibleName = assigneeName;
       d.torMembers ??= [];
-      const alreadyHas = d.torMembers.some(
+      const existingMember = d.torMembers.find(
         (m) => m.name.trim() === assigneeName,
       );
-      if (!alreadyHas) {
+      if (existingMember) {
+        if (!existingMember.position.trim() && boundPos) {
+          existingMember.position = boundPos;
+        }
+      } else {
         const blankRow = d.torMembers.find((m) => !m.name.trim());
         if (blankRow) {
           blankRow.name = assigneeName;
+          if (!blankRow.position.trim() && boundPos) {
+            blankRow.position = boundPos;
+          }
         } else {
           d.torMembers.push({
             name: assigneeName,
-            position: '',
+            position: boundPos,
             role: d.torMembers.length === 0 ? 'ประธานกรรมการ' : 'กรรมการ',
           });
         }
       }
     }
-    const extraNotes = [payload.notes, refLabel].filter(Boolean).join(' — ');
-    if (extraNotes) {
-      d.torNotes = appendUniqueNoteLine(d.torNotes, `[คำสั่ง TOR] ${extraNotes}`);
+    if (notes) {
+      d.torNotes = appendUniqueNoteLine(d.torNotes, notes);
     }
-  } else if (item.docCategory === 'tor_approval') {
-    if (item.bookNo) d.torNo = item.bookNo;
+  } else if (item.docCategory === 'tor_approval' || item.docCategory === 'ref_price') {
+    // 3. tor_approval (และรองรับของเดิม ref_price): จัดทำ TOR และราคากลาง
+    const refPrice = parsePositiveNumber(payload.refPrice);
+    const torAuthor = String(payload.torAuthor || '').trim();
+    const detailsText = String(payload.details || '').trim();
+
+    if (refPrice !== null) {
+      target.reference = refPrice;
+    }
+    if (bookNo) {
+      d.torNo = bookNo;
+    }
     if (bookDate) {
       d.torPreparedDate = bookDate;
       d.torDate = bookDate;
+      if (refPrice !== null || item.docCategory === 'ref_price') {
+        d.referenceDate = bookDate;
+      }
     }
-    if (payload.torAuthor) d.torAuthor = String(payload.torAuthor).trim();
-    const extraDetails = [
-      payload.torAuthor ? `ผู้จัดทำ: ${payload.torAuthor}` : '',
-      payload.details,
-      refLabel,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    if (extraDetails) {
-      d.torNotes = appendUniqueNoteLine(d.torNotes, `[อนุมัติ TOR] ${extraDetails}`);
+    if (torAuthor) {
+      d.torAuthor = torAuthor;
     }
-  } else if (item.docCategory === 'ref_price') {
-    const refPrice = Number(payload.refPrice);
-    if (Number.isFinite(refPrice) && refPrice > 0) {
-      target.reference = refPrice;
-    }
-    if (bookDate) {
-      d.referenceDate = bookDate;
-      if (!d.torPreparedDate) d.torPreparedDate = bookDate;
-    }
-    const extraDetails = [
-      Number.isFinite(refPrice) && refPrice > 0
-        ? `ราคากลาง ${refPrice.toLocaleString('en-US')} บาท`
-        : '',
-      payload.details,
-      refLabel,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    if (extraDetails) {
-      d.torNotes = appendUniqueNoteLine(d.torNotes, `[ราคากลาง] ${extraDetails}`);
+    if (detailsText) {
+      d.torNotes = appendUniqueNoteLine(d.torNotes, detailsText);
     }
   } else if (item.docCategory === 'disbursement') {
-    const round =
-      Number.isInteger(Number(payload.installment)) && Number(payload.installment) >= 1
-        ? Number(payload.installment)
-        : 1;
-    const voucherNo = String(payload.voucherNo || item.bookNo || '').trim();
-    const amount =
-      payload.amount != null && Number.isFinite(Number(payload.amount))
-        ? Number(payload.amount)
-        : ('' as const);
-    const paymentDate =
-      payload.status === 'paid' ? bookDate || todayBangkok() : '';
-    const voucherNotes = [item.subject, item.bookNo ? `อ้างอิง ${item.bookNo}` : '']
-      .filter(Boolean)
-      .join(' · ');
+    // 4. disbursement: ฎีกาเบิกจ่ายเงิน (Non-Destructive Merge — ไม่บังคับทุกช่องและไม่ใส่ค่าเริ่มต้นทับ)
+    const installment = parsePositiveInteger(payload.installment);
+    const voucherNo = String(payload.voucherNo || bookNo || '').trim();
+    const amount = parseNonNegativeNumber(payload.amount);
+    const status =
+      payload.status === 'paid' || payload.status === 'pending'
+        ? payload.status
+        : undefined;
+    const paidDateFromPayload =
+      status === 'paid' ? bookDate || todayBangkok() : '';
 
-    const entries = getEffectiveVoucherEntries(d);
-    const existingIdx = entries.findIndex(
-      (v) =>
-        v.round === round &&
-        ((voucherNo && v.voucherNo === voucherNo) ||
-          (!v.voucherNo && !v.voucherDate && v.voucherAmount === '')),
+    const hasAnyVoucherField = Boolean(
+      installment !== null ||
+        voucherNo ||
+        amount !== null ||
+        bookDate ||
+        paidDateFromPayload ||
+        subject,
     );
 
-    const nextEntry: VoucherEntry = {
-      round,
-      voucherNo,
-      voucherDate: bookDate,
-      voucherAmount: amount,
-      paymentDate,
-      voucherNotes,
-    };
+    if (hasAnyVoucherField) {
+      const entries = getEffectiveVoucherEntries(d);
 
-    if (existingIdx >= 0) {
-      entries[existingIdx] = {
-        ...entries[existingIdx],
-        ...nextEntry,
-        voucherNo: nextEntry.voucherNo || entries[existingIdx].voucherNo,
-        voucherDate: nextEntry.voucherDate || entries[existingIdx].voucherDate,
-        voucherAmount:
-          nextEntry.voucherAmount !== ''
-            ? nextEntry.voucherAmount
-            : entries[existingIdx].voucherAmount,
-        paymentDate: nextEntry.paymentDate || entries[existingIdx].paymentDate,
-        voucherNotes: appendUniqueNoteLine(
-          entries[existingIdx].voucherNotes,
-          voucherNotes,
-        ),
-      };
-    } else {
-      entries.push(nextEntry);
+      let existingIdx = -1;
+      if (voucherNo) {
+        existingIdx = entries.findIndex(
+          (v) =>
+            v.voucherNo.trim() === voucherNo &&
+            (installment === null || v.round === installment),
+        );
+      }
+      if (existingIdx === -1 && installment !== null) {
+        existingIdx = entries.findIndex(
+          (v) =>
+            v.round === installment &&
+            (!voucherNo || !v.voucherNo.trim() || v.voucherNo.trim() === voucherNo),
+        );
+      }
+      if (existingIdx === -1 && installment === null && !voucherNo && entries.length > 0) {
+        // กรณีไม่ได้ระบุงวดและเลขที่ฎีกา ให้ merge เข้ากับรายการฎีกาล่าสุดโดยคงงวดเดิมไว้
+        existingIdx = entries.length - 1;
+      }
+
+      if (existingIdx >= 0) {
+        const existing = entries[existingIdx];
+        entries[existingIdx] = {
+          ...existing,
+          round: installment !== null ? installment : existing.round,
+          voucherNo: voucherNo || existing.voucherNo,
+          voucherDate: bookDate || existing.voucherDate,
+          voucherAmount: amount !== null ? amount : existing.voucherAmount,
+          paymentDate: paidDateFromPayload || existing.paymentDate,
+          voucherNotes: subject
+            ? appendUniqueNoteLine(existing.voucherNotes, subject)
+            : existing.voucherNotes,
+        };
+      } else {
+        const fallbackRound =
+          installment !== null
+            ? installment
+            : entries.length > 0
+              ? Math.max(...entries.map((v) => v.round)) + 1
+              : d.deliveryRounds?.[0]?.round || 1;
+
+        entries.push({
+          round: fallbackRound,
+          voucherNo,
+          voucherDate: bookDate,
+          voucherAmount: amount !== null ? amount : ('' as const),
+          paymentDate: paidDateFromPayload,
+          voucherNotes: subject,
+        });
+      }
+
+      entries.sort((a, b) => a.round - b.round);
+      d.voucherEntries = entries;
+
+      const latestVoucher = entries[entries.length - 1];
+      const hasAnyAmt = entries.some(
+        (v) => v.voucherAmount !== '' && v.voucherAmount != null,
+      );
+      const allPaid =
+        entries.length > 0 && entries.every((v) => Boolean(v.paymentDate));
+      const joinedVoucherNo = entries
+        .map((v) => v.voucherNo)
+        .filter(Boolean)
+        .join(', ');
+
+      if (joinedVoucherNo) d.voucherNo = joinedVoucherNo;
+      if (latestVoucher?.voucherDate) d.voucherDate = latestVoucher.voucherDate;
+      if (hasAnyAmt) {
+        d.voucherAmount = entries.reduce(
+          (sum, v) => sum + (Number(v.voucherAmount) || 0),
+          0,
+        );
+      }
+      if (allPaid && latestVoucher?.paymentDate) {
+        d.paymentDate = latestVoucher.paymentDate;
+      }
+      if (latestVoucher?.voucherNotes) {
+        d.voucherNotes = latestVoucher.voucherNotes;
+      }
     }
-
-    entries.sort((a, b) => a.round - b.round);
-    d.voucherEntries = entries;
-
-    const latestVoucher = entries[entries.length - 1];
-    const hasAnyAmt = entries.some(
-      (v) => v.voucherAmount !== '' && v.voucherAmount != null,
-    );
-    const allPaid = entries.length > 0 && entries.every((v) => Boolean(v.paymentDate));
-    d.voucherNo = entries.map((v) => v.voucherNo).filter(Boolean).join(', ');
-    d.voucherDate = latestVoucher?.voucherDate || '';
-    d.voucherAmount = hasAnyAmt
-      ? entries.reduce((sum, v) => sum + (Number(v.voucherAmount) || 0), 0)
-      : '';
-    d.paymentDate = allPaid ? latestVoucher?.paymentDate || '' : '';
-    d.voucherNotes = latestVoucher?.voucherNotes || '';
   }
 
-  if (item.attachment?.fileUrl && item.attachment?.fileName) {
-    const duplicateFile = target.files.some(
-      (f) =>
-        f.url === item.attachment!.fileUrl ||
-        (f.category === meta.targetTab && f.name === item.attachment!.fileName),
-    );
-    if (!duplicateFile) {
-      target.files.push({
-        id: uid(),
-        name: item.attachment.fileName,
-        type: item.attachment.mimeType || 'application/pdf',
-        size: Number(item.attachment.fileSize || 0),
-        category: meta.targetTab,
-        url: item.attachment.fileUrl,
-      });
-    }
-  }
+  appendSarabanAttachmentIfPresent(target, item, meta.targetTab);
 
   const prevStatus = target.status;
   const progress = deriveProgressFromTabs(target);

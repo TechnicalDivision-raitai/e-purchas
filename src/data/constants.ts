@@ -89,7 +89,7 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
   ],
   saraban: [
     'รับข้อมูลจากระบบสารบรรณ',
-    'คิวเอกสารเชื่อมโยง 3 หมวดหลัก: จัดทำ TOR, ราคากลาง และฎีกาเบิกจ่าย (2-Way Sync)',
+    'คิวเอกสารเชื่อมโยง 4 หมวดหมู่: ขออนุมัติ (ข้อมูลทั่วไป), แต่งตั้ง กก. TOR, จัดทำ TOR และราคากลาง, และฎีกาเบิกจ่าย (2-Way Sync)',
   ],
   excel: [
     'นำเข้า / ส่งออก Excel',
@@ -98,9 +98,17 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
 };
 
 export const SARABAN_ALLOWED_CATEGORIES = [
+  'general_approval',
   'tor_order',
   'tor_approval',
   'ref_price',
+  'disbursement',
+] as const;
+
+export const SARABAN_PRIMARY_CATEGORIES = [
+  'general_approval',
+  'tor_order',
+  'tor_approval',
   'disbursement',
 ] as const;
 
@@ -112,18 +120,23 @@ export const SARABAN_CATEGORY_META: Record<
     targetTab: ProjectTabId;
   }
 > = {
+  general_approval: {
+    label: 'ขออนุมัติ (ข้อมูลทั่วไป)',
+    groupLabel: 'ข้อมูลทั่วไป',
+    targetTab: 'general',
+  },
   tor_order: {
-    label: 'คำสั่งแต่งตั้ง กก. TOR / ราคากลาง',
+    label: 'แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง',
     groupLabel: 'จัดทำ TOR',
     targetTab: 'tor',
   },
   tor_approval: {
-    label: 'ขออนุมัติ / จัดทำ TOR',
+    label: 'จัดทำ TOR และราคากลาง',
     groupLabel: 'จัดทำ TOR',
     targetTab: 'tor',
   },
   ref_price: {
-    label: 'ขออนุมัติราคากลาง',
+    label: 'จัดทำ TOR และราคากลาง (ราคากลาง)',
     groupLabel: 'ราคากลาง',
     targetTab: 'tor',
   },

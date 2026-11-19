@@ -20,6 +20,7 @@ const CHUNK_SIZE = 40000; // ป้องกันเกินลิมิต 50
 const QUEUE_SHEET_NAME = 'SarabanProcurementQueue';
 
 const ALLOWED_DOC_CATEGORIES = [
+  'general_approval',
   'tor_order',
   'tor_approval',
   'ref_price',
@@ -150,6 +151,7 @@ function formatIsoDate_(value) {
     return Utilities.formatDate(value, 'Asia/Bangkok', 'yyyy-MM-dd');
   }
   const s = String(value).trim();
+  if (!s) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
   const parsed = new Date(s);
@@ -682,7 +684,7 @@ function handlePushProcurementQueue_(body) {
     const docCategory = String(body.docCategory || '').trim();
     if (ALLOWED_DOC_CATEGORIES.indexOf(docCategory) === -1) {
       throw new Error(
-        'docCategory ไม่รองรับ (รองรับเฉพาะ tor_order, tor_approval, ref_price, disbursement)',
+        'docCategory ไม่รองรับ (รองรับเฉพาะ general_approval, tor_order, tor_approval, ref_price, disbursement)',
       );
     }
 
@@ -707,9 +709,18 @@ function handlePushProcurementQueue_(body) {
 
     const queueId = generateQueueId_(sheet);
     const createdAt = new Date().toISOString();
-    const bookDateIso = formatIsoDate_(body.bookDate);
-    const payloadJson = JSON.stringify(body.payload || {});
-    const attachmentJson = body.attachment ? JSON.stringify(body.attachment) : '';
+    const bookNo = body.bookNo == null ? '' : String(body.bookNo).trim();
+    const bookDateIso = body.bookDate ? formatIsoDate_(body.bookDate) : '';
+    const subject = body.subject == null ? '' : String(body.subject).trim();
+    const safePayload =
+      body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
+        ? body.payload
+        : {};
+    const payloadJson = JSON.stringify(safePayload);
+    const attachmentJson =
+      body.attachment && typeof body.attachment === 'object'
+        ? JSON.stringify(body.attachment)
+        : '';
 
     const newRow = [
       queueId,
@@ -718,9 +729,9 @@ function handlePushProcurementQueue_(body) {
       String(body.projectCode || '').trim(),
       Number(body.fiscalYear || 0),
       docCategory,
-      String(body.bookNo || '').trim(),
+      bookNo,
       bookDateIso,
-      String(body.subject || '').trim(),
+      subject,
       payloadJson,
       attachmentJson,
       'pending',

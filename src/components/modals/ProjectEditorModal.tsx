@@ -32,6 +32,15 @@ import {
   STATUSES,
 } from '../../data/constants';
 import {
+  buildPersonPositionMap,
+  loadPersonPositionOverrides,
+  lookupPersonPosition,
+  normalizePersonKey,
+  normalizePersonName,
+  savePersonPositionOverrides,
+  type PersonPositionStore,
+} from '../../domain/personPositions';
+import {
   cleanAcceptanceRounds,
   cleanCancelledRounds,
   cleanCommitteeMembers,
@@ -187,9 +196,13 @@ export function ProjectEditorModal({
   });
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [showCancelPanel, setShowCancelPanel] = useState<boolean>(false);
+  const [positionOverrides, setPositionOverrides] = useState<PersonPositionStore>(() =>
+    loadPersonPositionOverrides(),
+  );
 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const panelContainerRef = useRef<HTMLDivElement | null>(null);
+  const touchedPositionKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -199,6 +212,8 @@ export function ProjectEditorModal({
     setShowCancelPanel(
       Boolean(existing?.projectDetails?.cancelledRounds?.length),
     );
+    setPositionOverrides(loadPersonPositionOverrides());
+    touchedPositionKeysRef.current.clear();
   }, [projectId, initialTab, existing]);
 
   const activeIndex = Math.max(
@@ -241,6 +256,26 @@ export function ProjectEditorModal({
     [draft, existing],
   );
 
+  const personPositionMap = useMemo(
+    () =>
+      buildPersonPositionMap(
+        state.rows,
+        [...draft.torMembers, ...draft.acceptanceMembers],
+        positionOverrides,
+      ),
+    [state.rows, draft.torMembers, draft.acceptanceMembers, positionOverrides],
+  );
+
+  const recordLatestPersonPosition = (name: string, position: string) => {
+    const cleanName = normalizePersonName(name);
+    const cleanPos = normalizePersonName(position);
+    if (!cleanName || !cleanPos) return;
+    const nextStore = savePersonPositionOverrides([
+      { name: cleanName, position: cleanPos },
+    ]);
+    setPositionOverrides(nextStore);
+  };
+
   const suggestionPools = useMemo(() => {
     const people: string[] = [];
     const positions: string[] = [];
@@ -271,6 +306,10 @@ export function ProjectEditorModal({
       if (m.name) people.push(m.name);
       if (m.position) positions.push(m.position);
     }
+    for (const rec of Object.values(positionOverrides)) {
+      if (rec.name) people.push(rec.name);
+      if (rec.position) positions.push(rec.position);
+    }
 
     return {
       people: collectNormalizedSuggestions(people),
@@ -279,7 +318,7 @@ export function ProjectEditorModal({
       funds: collectNormalizedSuggestions(funds),
       methods: collectNormalizedSuggestions(methods),
     };
-  }, [state.rows, draft.torMembers, draft.acceptanceMembers]);
+  }, [state.rows, draft.torMembers, draft.acceptanceMembers, positionOverrides]);
 
   const handleTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, idx: number) => {
     let next: number | undefined;
@@ -588,6 +627,35 @@ export function ProjectEditorModal({
       });
 
       if (saved) {
+        const beforePosByPerson = new Map<string, string>();
+        for (const m of [
+          ...(existing?.projectDetails?.torMembers || []),
+          ...(existing?.projectDetails?.acceptanceMembers || []),
+        ]) {
+          const k = normalizePersonKey(m.name);
+          const pos = normalizePersonName(m.position);
+          if (k && pos) beforePosByPerson.set(k, pos);
+        }
+
+        const currentOverrides = loadPersonPositionOverrides();
+        const latestEditedEntries: Array<{ name: string; position: string }> = [];
+        for (const m of [...cleanedTorMembers, ...cleanedAcceptanceMembers]) {
+          const cleanName = normalizePersonName(m.name);
+          const cleanPos = normalizePersonName(m.position);
+          const key = normalizePersonKey(cleanName);
+          if (!key || !cleanPos) continue;
+          const prevPosInProject = beforePosByPerson.get(key) || '';
+          const wasManuallyTouched = touchedPositionKeysRef.current.has(key);
+          const changedFromBefore = !existing || prevPosInProject !== cleanPos;
+          const missingOverride = !currentOverrides[key];
+          if (wasManuallyTouched || changedFromBefore || missingOverride) {
+            latestEditedEntries.push({ name: cleanName, position: cleanPos });
+          }
+        }
+        if (latestEditedEntries.length > 0) {
+          savePersonPositionOverrides(latestEditedEntries);
+        }
+
         showToast('บันทึกโครงการแล้ว');
         onClose();
       }
@@ -620,13 +688,18 @@ export function ProjectEditorModal({
 
     return (
       <div className="col-span-full mt-1">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold text-[#17406e]">
-            {kind === 'tor'
-              ? 'คณะกรรมการจัดทำ TOR และราคากลาง'
-              : 'รายชื่อคณะกรรมการตรวจรับ'}{' '}
-            <span className="font-mono-num text-[#3d6591]">({members.length} คน)</span>
-          </h4>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h4 className="text-xs font-semibold text-[#17406e]">
+              {kind === 'tor'
+                ? 'คณะกรรมการจัดทำ TOR และราคากลาง'
+                : 'รายชื่อคณะกรรมการตรวจรับ'}{' '}
+              <span className="font-mono-num text-[#3d6591]">({members.length} คน)</span>
+            </h4>
+            <p className="mt-0.5 text-[10.5px] text-[#557496]">
+              เลือกหรือพิมพ์ชื่อเพื่อดึงตำแหน่งล่าสุดอัตโนมัติ · แก้ไขตำแหน่งเองได้ (ระบบจะจำตำแหน่งที่แก้ล่าสุดไว้ใช้ครั้งถัดไป)
+            </p>
+          </div>
           <button
             type="button"
             disabled={members.length >= 30}
@@ -658,13 +731,38 @@ export function ProjectEditorModal({
                   placeholder="ชื่อ–นามสกุล…"
                   aria-label={`ชื่อกรรมการคนที่ ${idx + 1}`}
                   suggestions={suggestionPools.people}
-                  onChangeValue={(nextVal) =>
+                  onChangeValue={(nextVal) => {
+                    const boundPosition = lookupPersonPosition(personPositionMap, nextVal);
+                    const nextKey = normalizePersonKey(nextVal);
+                    setMembers((list) =>
+                      list.map((item, i) => {
+                        if (i !== idx) return item;
+                        const prevKey = normalizePersonKey(item.name);
+                        const shouldAutoFill =
+                          Boolean(boundPosition) &&
+                          (!item.position.trim() || nextKey !== prevKey);
+                        return {
+                          ...item,
+                          name: nextVal,
+                          position: shouldAutoFill ? boundPosition : item.position,
+                        };
+                      }),
+                    );
+                  }}
+                  onSelectSuggestion={(selectedName) => {
+                    const boundPosition = lookupPersonPosition(
+                      personPositionMap,
+                      selectedName,
+                    );
+                    if (!boundPosition) return;
                     setMembers((list) =>
                       list.map((item, i) =>
-                        i === idx ? { ...item, name: nextVal } : item,
+                        i === idx
+                          ? { ...item, name: selectedName, position: boundPosition }
+                          : item,
                       ),
-                    )
-                  }
+                    );
+                  }}
                   className="min-h-[34px] w-full rounded-md border border-[#a8c4e4] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                 />
 
@@ -674,13 +772,32 @@ export function ProjectEditorModal({
                   placeholder="ตำแหน่งราชการ…"
                   aria-label={`ตำแหน่งกรรมการคนที่ ${idx + 1}`}
                   suggestions={suggestionPools.positions}
-                  onChangeValue={(nextVal) =>
+                  onChangeValue={(nextVal) => {
+                    const nameKey = normalizePersonKey(m.name);
+                    if (nameKey) {
+                      touchedPositionKeysRef.current.add(nameKey);
+                    }
                     setMembers((list) =>
                       list.map((item, i) =>
                         i === idx ? { ...item, position: nextVal } : item,
                       ),
-                    )
-                  }
+                    );
+                  }}
+                  onSelectSuggestion={(selectedPos) => {
+                    const nameKey = normalizePersonKey(m.name);
+                    if (nameKey) {
+                      touchedPositionKeysRef.current.add(nameKey);
+                    }
+                    recordLatestPersonPosition(m.name, selectedPos);
+                  }}
+                  onBlur={() => {
+                    if (m.name.trim() && m.position.trim()) {
+                      const nameKey = normalizePersonKey(m.name);
+                      if (nameKey && touchedPositionKeysRef.current.has(nameKey)) {
+                        recordLatestPersonPosition(m.name, m.position);
+                      }
+                    }
+                  }}
                   className="min-h-[34px] w-full rounded-md border border-[#a8c4e4] bg-white px-2.5 py-1.5 text-xs text-[#132d4c]"
                 />
 

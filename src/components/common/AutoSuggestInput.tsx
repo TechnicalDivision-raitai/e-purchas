@@ -32,6 +32,7 @@ interface AutoSuggestInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
   value: string;
   onChangeValue: (nextValue: string) => void;
+  onSelectSuggestion?: (selectedValue: string) => void;
   suggestions: string[];
   minCharsToSuggest?: number;
   maxSuggestions?: number;
@@ -40,6 +41,7 @@ interface AutoSuggestInputProps
 export function AutoSuggestInput({
   value,
   onChangeValue,
+  onSelectSuggestion,
   suggestions,
   minCharsToSuggest = 1,
   maxSuggestions = 8,
@@ -71,6 +73,7 @@ export function AutoSuggestInput({
 
   const selectSuggestion = (item: string) => {
     onChangeValue(item);
+    onSelectSuggestion?.(item);
     setOpen(false);
     setHighlightedIndex(-1);
   };

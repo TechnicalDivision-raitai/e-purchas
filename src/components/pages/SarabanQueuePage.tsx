@@ -1,6 +1,8 @@
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardCopy,
   Code2,
   ExternalLink,
@@ -16,8 +18,8 @@ import { useMemo, useState } from 'react';
 import appsScriptCode from '../../../google-apps-script/Code.gs?raw';
 import {
   PROJECT_TABS,
-  SARABAN_ALLOWED_CATEGORIES,
   SARABAN_CATEGORY_META,
+  SARABAN_PRIMARY_CATEGORIES,
 } from '../../data/constants';
 import { DEFAULT_GOOGLE_SCRIPT_URL } from '../../services/googleSync';
 import { useProcurement } from '../../storage/useProcurementStore';
@@ -76,6 +78,11 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
   const [rejectReasonInput, setRejectReasonInput] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<SarabanQueueItem | null>(null);
   const [showScriptPanel, setShowScriptPanel] = useState<boolean>(false);
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (key: string) => {
+    setExpandedIds((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const isAdmin = user.role === 'admin';
 
@@ -100,7 +107,13 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
     const q = query.trim().toLowerCase();
     return sarabanQueue.filter((item) => {
       if (statusFilter !== 'all' && item.queueStatus !== statusFilter) return false;
-      if (categoryFilter !== 'all' && item.docCategory !== categoryFilter) return false;
+      if (categoryFilter !== 'all') {
+        const matchCategory =
+          categoryFilter === 'tor_approval'
+            ? item.docCategory === 'tor_approval' || item.docCategory === 'ref_price'
+            : item.docCategory === categoryFilter;
+        if (!matchCategory) return false;
+      }
       if (!q) return true;
       return [
         item.queueId,
@@ -109,6 +122,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
         item.subject,
         item.submittedBy,
         item.idempotencyKey,
+        item.attachment?.fileName,
         SARABAN_CATEGORY_META[item.docCategory]?.label,
       ].some((v) => String(v || '').toLowerCase().includes(q));
     });
@@ -182,41 +196,94 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
     }
   };
 
+  const getQueueDisplayTitle = (item: SarabanQueueItem): string => {
+    if (item.subject?.trim()) return item.subject.trim();
+    if (item.docCategory === 'general_approval') {
+      return item.attachment?.fileName
+        ? `เอกสารแนบขออนุมัติ: ${item.attachment.fileName}`
+        : 'แนบไฟล์ขออนุมัติ (ข้อมูลทั่วไป)';
+    }
+    if (item.attachment?.fileName) {
+      return `${SARABAN_CATEGORY_META[item.docCategory]?.label || item.docCategory} · ${item.attachment.fileName}`;
+    }
+    return SARABAN_CATEGORY_META[item.docCategory]?.label || '(ไม่ระบุเรื่อง)';
+  };
+
   const renderPayloadChips = (item: SarabanQueueItem) => {
     const p = item.payload || {};
     const chips: Array<{ label: string; value: string; highlight?: boolean }> = [];
 
-    if (item.docCategory === 'tor_order') {
-      if (p.assigneeName) chips.push({ label: 'ผู้รับผิดชอบ/กก.', value: p.assigneeName });
-      if (p.notes) chips.push({ label: 'หมายเหตุ', value: p.notes });
-    } else if (item.docCategory === 'tor_approval') {
-      if (p.torAuthor) chips.push({ label: 'ผู้จัดทำ TOR', value: p.torAuthor });
-      if (p.details) chips.push({ label: 'รายละเอียด', value: p.details });
-    } else if (item.docCategory === 'ref_price') {
-      if (p.refPrice != null) {
+    if (item.docCategory === 'general_approval') {
+      chips.push({
+        label: 'การอัปเดต',
+        value: 'แนบเฉพาะไฟล์เข้าหน้าข้อมูลทั่วไป (ไม่แก้ไขข้อมูลตั้งต้น)',
+      });
+    } else if (item.docCategory === 'tor_order') {
+      const orderNo = String(p.orderNo || '').trim();
+      const orderDate = String(p.orderDate || '').trim();
+      const assigneeName = String(p.assigneeName || '').trim();
+      const notes = String(p.notes || '').trim();
+      if (orderNo && orderNo !== item.bookNo) {
+        chips.push({ label: 'เลขที่คำสั่ง', value: orderNo });
+      }
+      if (orderDate && orderDate !== item.bookDate) {
+        chips.push({ label: 'วันที่คำสั่ง', value: formatThaiDate(orderDate) });
+      }
+      if (assigneeName) {
+        chips.push({ label: 'ผู้รับผิดชอบ', value: assigneeName });
+      }
+      if (notes) {
+        chips.push({ label: 'หมายเหตุ', value: notes });
+      }
+    } else if (item.docCategory === 'tor_approval' || item.docCategory === 'ref_price') {
+      const refPriceNum =
+        p.refPrice !== undefined && p.refPrice !== null && String(p.refPrice).trim() !== ''
+          ? Number(p.refPrice)
+          : NaN;
+      if (Number.isFinite(refPriceNum) && refPriceNum > 0) {
         chips.push({
           label: 'ราคากลาง',
-          value: `${formatMoney(p.refPrice)} บาท`,
+          value: `${formatMoney(refPriceNum)} บาท`,
           highlight: true,
         });
       }
-      if (p.details) chips.push({ label: 'รายละเอียด', value: p.details });
+      if (p.torAuthor?.trim()) {
+        chips.push({ label: 'ผู้จัดทำ TOR', value: p.torAuthor.trim() });
+      }
+      if (p.details?.trim()) {
+        chips.push({ label: 'รายละเอียด', value: p.details.trim() });
+      }
     } else if (item.docCategory === 'disbursement') {
-      chips.push({ label: 'งวดที่', value: String(p.installment || 1) });
-      if (p.amount != null) {
+      const instNum =
+        p.installment !== undefined &&
+        p.installment !== null &&
+        String(p.installment).trim() !== ''
+          ? Number(p.installment)
+          : NaN;
+      if (Number.isInteger(instNum) && instNum >= 1) {
+        chips.push({ label: 'งวดที่', value: String(instNum) });
+      }
+      const amtNum =
+        p.amount !== undefined && p.amount !== null && String(p.amount).trim() !== ''
+          ? Number(p.amount)
+          : NaN;
+      if (Number.isFinite(amtNum) && amtNum >= 0) {
         chips.push({
           label: 'จำนวนเงิน',
-          value: `${formatMoney(p.amount)} บาท`,
+          value: `${formatMoney(amtNum)} บาท`,
           highlight: true,
         });
       }
-      if (p.voucherNo || item.bookNo) {
-        chips.push({ label: 'เลขที่ฎีกา', value: p.voucherNo || item.bookNo });
+      const voucherNo = String(p.voucherNo || '').trim();
+      if (voucherNo) {
+        chips.push({ label: 'เลขที่ฎีกา', value: voucherNo });
       }
-      chips.push({
-        label: 'สถานะเบิกจ่าย',
-        value: p.status === 'paid' ? 'เบิกจ่ายแล้ว' : 'รอดำเนินการ',
-      });
+      if (p.status === 'paid' || p.status === 'pending') {
+        chips.push({
+          label: 'สถานะเบิกจ่าย',
+          value: p.status === 'paid' ? 'เบิกจ่ายแล้ว' : 'รอดำเนินการ',
+        });
+      }
     }
 
     if (chips.length === 0) return null;
@@ -314,8 +381,8 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
             }
             className="min-h-[32px] rounded-md border border-[#c5d9ef] bg-white px-2.5 py-1 text-xs font-medium text-[#173659]"
           >
-            <option value="all">ทุกหมวดเอกสาร (4 ประเภท)</option>
-            {SARABAN_ALLOWED_CATEGORIES.map((cat) => (
+            <option value="all">ทุกหมวดเอกสาร (4 หมวดหมู่)</option>
+            {SARABAN_PRIMARY_CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
                 {SARABAN_CATEGORY_META[cat].label}
               </option>
@@ -362,8 +429,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
                   : 'ยังไม่มีรายการคิวในตัวกรองนี้'}
             </p>
             <p className="mt-1 text-xs text-[#597494]">
-              รองรับเอกสาร 3 หมวดหลัก: จัดทำ TOR, ราคากลาง และฎีกาเบิกจ่าย
-              เมื่อสารบรรณส่งข้อมูลเข้ามาจะมีตัวเลขแจ้งเตือนและแสดงที่นี่
+              รองรับเอกสาร 4 หมวดหมู่: ขออนุมัติ (ข้อมูลทั่วไป), แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง, จัดทำ TOR และราคากลาง และฎีกาเบิกจ่ายเงิน
             </p>
           </div>
         ) : (
@@ -373,162 +439,203 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
               const statusMeta = QUEUE_STATUS_META[item.queueStatus];
               const matched = resolveMatchedProject(item);
               const isBusy = busyKey === item.queueId;
+              const itemKey = item.queueId || item.idempotencyKey;
+              const isExpanded = Boolean(expandedIds[itemKey]);
 
               return (
                 <article
-                  key={item.queueId || item.idempotencyKey}
-                  className="flex flex-col gap-3 rounded-xl border border-[#d6e4f2] bg-white px-5 py-4 transition hover:border-[#8bb7e8] hover:shadow-xs lg:flex-row lg:items-center lg:justify-between"
+                  key={itemKey}
+                  className="rounded-xl border border-[#d6e4f2] bg-white px-5 py-3.5 transition hover:border-[#8bb7e8] hover:shadow-xs"
                 >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-[#5c7696]">
-                      <span className="font-mono-num font-semibold text-[#335275]">
-                        {item.queueId || '—'}
-                      </span>
-                      <span>·</span>
-                      <span className="font-medium text-[#2c5282]">
-                        {catMeta?.label || item.docCategory}
-                      </span>
-                      <span>·</span>
-                      <span>ส่งโดย {item.submittedBy || 'ไม่ระบุ'}</span>
-                      {item.createdAt && (
-                        <>
-                          <span>·</span>
-                          <span className="tabular-nums">
-                            {formatThaiDateTime(item.createdAt)}
-                          </span>
-                        </>
-                      )}
-                      {item.queueStatus !== 'pending' && (
-                        <span
-                          className={`ml-1 rounded border px-1.5 py-0.5 text-[10.5px] font-semibold ${statusMeta.className}`}
-                        >
-                          {statusMeta.label}
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-[#eef4fc] px-2 py-0.5 font-mono-num text-[11.5px] font-bold text-[#144b96]">
+                          {item.queueId || '—'}
                         </span>
-                      )}
-                    </div>
+                      </div>
 
-                    <h3 className="text-[14.5px] font-bold leading-snug text-[#0f2a4a]">
-                      {item.subject || '(ไม่ระบุเรื่อง)'}
-                    </h3>
-
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-[#4b688a]">
-                      <span>
-                        เลขที่หนังสือ:{' '}
-                        <b className="text-[#153152]">{item.bookNo || '—'}</b>
-                      </span>
-                      <span className="text-[#c0d2e6]">|</span>
-                      <span>
-                        ลงวันที่:{' '}
-                        <b className="text-[#153152]">
-                          {formatThaiDate(item.bookDate)}
-                        </b>
-                      </span>
-                      <span className="text-[#c0d2e6]">|</span>
-                      {matched ? (
-                        <button
-                          type="button"
-                          onClick={() => onViewProject(matched.id, catMeta?.targetTab)}
-                          className="text-left font-semibold text-[#0d825b] hover:underline"
-                        >
-                          [{matched.code}] {matched.title}
-                        </button>
-                      ) : (
-                        <span className="font-medium text-[#b45309]">
-                          ยังไม่พบโครงการตรงกัน (
-                          {item.projectCode || item.procurementId || 'รอเลือกโครงการ'})
-                        </span>
-                      )}
-                    </div>
-
-                    {renderPayloadChips(item)}
-
-                    {item.queueStatus !== 'pending' && (
-                      <div className="pt-1 text-[11px] text-[#557191]">
-                        ผู้ตรวจสอบ: <b className="text-[#153152]">{item.reviewedBy || '—'}</b>
-                        {item.reviewedAt
-                          ? ` · เวลา ${formatThaiDateTime(item.reviewedAt)}`
-                          : ''}
-                        {item.queueStatus === 'rejected' && item.rejectReason && (
-                          <span className="ml-2 font-medium text-[#a12828]">
-                            · เหตุผล: {item.rejectReason}
+                      <div className="text-[13.5px] leading-snug">
+                        {matched ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewProject(matched.id, catMeta?.targetTab)}
+                            className="text-left font-bold text-[#0f2a4a] transition hover:text-[#0d825b] hover:underline"
+                          >
+                            <span className="font-mono-num text-[#0d825b]">
+                              [{matched.code}]
+                            </span>{' '}
+                            {matched.title}
+                          </button>
+                        ) : (
+                          <span className="font-semibold text-[#b45309]">
+                            ยังไม่พบโครงการตรงกัน (
+                            {item.projectCode || item.procurementId || 'รอเลือกโครงการ'})
                           </span>
                         )}
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        onClick={() => toggleExpand(itemKey)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#c5d9ef] bg-[#f5f9fe] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#23456e] transition hover:border-[#8bb7e8] hover:bg-[#e6f0fc]"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="h-3.5 w-3.5" />
+                            ซ่อนรายละเอียด
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            รายละเอียด
+                          </>
+                        )}
+                      </button>
+
+                      {isAdmin && item.queueStatus === 'pending' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleOpenInspect(item)}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#0d9468] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-xs transition hover:bg-[#0a7a55] disabled:opacity-45"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            ตรวจสอบ &amp; รับเข้า
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => {
+                              setRejectTarget(item);
+                              setRejectReasonInput('');
+                            }}
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#d1dfee] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#334e6f] transition hover:border-[#e3a3a3] hover:bg-[#fff5f5] hover:text-[#a82c2c] disabled:opacity-45"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            ปฏิเสธ
+                          </button>
+                        </>
+                      )}
+
+                      {item.queueStatus !== 'pending' && matched && (
+                        <button
+                          type="button"
+                          onClick={() => onViewProject(matched.id, catMeta?.targetTab)}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#c5d9ef] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#144b96] transition hover:bg-[#eef5ff]"
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          ดูโครงการ
+                        </button>
+                      )}
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => setDeleteTarget(item)}
+                          title="ลบรายการคิว"
+                          aria-label={`ลบคิว ${item.queueId}`}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#d1dfee] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4b6584] transition hover:border-[#edb8b8] hover:bg-[#fff5f5] hover:text-[#a82c2c] disabled:opacity-45"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          ลบคิว
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {item.attachment?.fileUrl ? (
-                      <a
-                        href={item.attachment.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={item.attachment.fileName || 'เปิดไฟล์แนบ'}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[#bdd6f2] bg-[#eef5ff] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#1552a3] transition hover:border-[#85b6eb] hover:bg-[#dcebfa]"
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        <span className="max-w-[140px] truncate">
-                          {item.attachment.fileName || 'เปิดไฟล์แนบ'}
+                  {isExpanded && (
+                    <div className="mt-3 space-y-2 border-t border-[#e6eff8] pt-3">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-[#5c7696]">
+                        <span className="rounded border border-[#c5d9ef] bg-[#f5f9ff] px-2 py-0.5 font-semibold text-[#17406e]">
+                          {catMeta?.label || item.docCategory}
                         </span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    ) : (
-                      <span className="px-1.5 text-[12px] font-medium text-[#8ba0b8]">
-                        ไม่มีไฟล์แนบ
-                      </span>
-                    )}
-
-                    {isAdmin && item.queueStatus === 'pending' && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleOpenInspect(item)}
-                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#0d9468] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-xs transition hover:bg-[#0a7a55] disabled:opacity-45"
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-[10.5px] font-semibold ${statusMeta.className}`}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          ตรวจสอบ &amp; รับเข้า
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => {
-                            setRejectTarget(item);
-                            setRejectReasonInput('');
-                          }}
-                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#d1dfee] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#334e6f] transition hover:border-[#e3a3a3] hover:bg-[#fff5f5] hover:text-[#a82c2c] disabled:opacity-45"
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          ปฏิเสธ
-                        </button>
-                      </>
-                    )}
+                          {statusMeta.label}
+                        </span>
+                        <span>·</span>
+                        <span>ส่งโดย {item.submittedBy || 'ไม่ระบุ'}</span>
+                        {item.createdAt && (
+                          <>
+                            <span>·</span>
+                            <span className="tabular-nums">
+                              {formatThaiDateTime(item.createdAt)}
+                            </span>
+                          </>
+                        )}
+                      </div>
 
-                    {item.queueStatus !== 'pending' && matched && (
-                      <button
-                        type="button"
-                        onClick={() => onViewProject(matched.id, catMeta?.targetTab)}
-                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#c5d9ef] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#144b96] transition hover:bg-[#eef5ff]"
-                      >
-                        <FolderOpen className="h-3.5 w-3.5" />
-                        ดูโครงการ
-                      </button>
-                    )}
+                      <div className="text-[13px] font-semibold leading-snug text-[#153152]">
+                        {getQueueDisplayTitle(item)}
+                      </div>
 
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => setDeleteTarget(item)}
-                        title="ลบรายการคิว"
-                        aria-label={`ลบคิว ${item.queueId}`}
-                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#d1dfee] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4b6584] transition hover:border-[#edb8b8] hover:bg-[#fff5f5] hover:text-[#a82c2c] disabled:opacity-45"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        ลบคิว
-                      </button>
-                    )}
-                  </div>
+                      {(item.bookNo || item.bookDate || item.attachment?.fileUrl) && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-[#4b688a]">
+                          {item.bookNo && (
+                            <span>
+                              เลขที่หนังสือ:{' '}
+                              <b className="text-[#153152]">{item.bookNo}</b>
+                            </span>
+                          )}
+                          {item.bookDate && (
+                            <span>
+                              ลงวันที่:{' '}
+                              <b className="text-[#153152]">
+                                {formatThaiDate(item.bookDate)}
+                              </b>
+                            </span>
+                          )}
+                          {item.attachment?.fileUrl ? (
+                            <a
+                              href={item.attachment.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={item.attachment.fileName || 'เปิดไฟล์แนบ'}
+                              className="inline-flex items-center gap-1 rounded-md border border-[#bdd6f2] bg-[#eef5ff] px-2 py-0.5 text-[11.5px] font-semibold text-[#1552a3] transition hover:border-[#85b6eb] hover:bg-[#dcebfa]"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              <span className="max-w-[220px] truncate">
+                                {item.attachment.fileName || 'เปิดไฟล์แนบ'}
+                              </span>
+                              <ExternalLink className="h-3 w-3 shrink-0" />
+                            </a>
+                          ) : (
+                            <span className="text-[11.5px] text-[#8ba0b8]">
+                              ไม่มีไฟล์แนบ
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {!item.bookNo && !item.bookDate && !item.attachment?.fileUrl && (
+                        <div className="text-[11.5px] text-[#8ba0b8]">ไม่มีไฟล์แนบ</div>
+                      )}
+
+                      {renderPayloadChips(item)}
+
+                      {item.queueStatus !== 'pending' && (
+                        <div className="pt-0.5 text-[11px] text-[#557191]">
+                          ผู้ตรวจสอบ:{' '}
+                          <b className="text-[#153152]">{item.reviewedBy || '—'}</b>
+                          {item.reviewedAt
+                            ? ` · เวลา ${formatThaiDateTime(item.reviewedAt)}`
+                            : ''}
+                          {item.queueStatus === 'rejected' && item.rejectReason && (
+                            <span className="ml-2 font-medium text-[#a12828]">
+                              · เหตุผล: {item.rejectReason}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -614,15 +721,19 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
 
             <div className="mt-3 space-y-2 rounded-lg border border-[#d6e4f2] bg-[#f7fafe] p-3.5 text-xs text-[#284566]">
               <div className="font-semibold text-[#0f2a4a]">
-                {inspectTarget.subject || '(ไม่ระบุเรื่อง)'}
+                {getQueueDisplayTitle(inspectTarget)}
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
-                <span>
-                  เลขที่หนังสือ: <b>{inspectTarget.bookNo || '—'}</b>
-                </span>
-                <span>
-                  ลงวันที่: <b>{formatThaiDate(inspectTarget.bookDate)}</b>
-                </span>
+                {inspectTarget.bookNo && (
+                  <span>
+                    เลขที่หนังสือ: <b>{inspectTarget.bookNo}</b>
+                  </span>
+                )}
+                {inspectTarget.bookDate && (
+                  <span>
+                    ลงวันที่: <b>{formatThaiDate(inspectTarget.bookDate)}</b>
+                  </span>
+                )}
                 <span>
                   ผู้ส่ง: <b>{inspectTarget.submittedBy || '—'}</b>
                 </span>
@@ -664,11 +775,22 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
             </label>
 
             {inspectTargetTabLabel && (
-              <p className="mt-2 text-[11px] text-[#4b688a]">
-                ระบบจะอัปเดตข้อมูลและไฟล์แนบเข้าแท็บ{' '}
-                <b className="text-[#0d825b]">“{inspectTargetTabLabel}”</b>{' '}
-                ของโครงการที่เลือก พร้อมส่งสถานะ <b className="text-[#0d825b]">approved</b>{' '}
-                กลับไปยังระบบสารบรรณ
+              <p className="mt-2 text-[11px] leading-relaxed text-[#4b688a]">
+                {inspectTarget.docCategory === 'general_approval' ? (
+                  <>
+                    ระบบจะแนบเฉพาะไฟล์เข้าแท็บ{' '}
+                    <b className="text-[#0d825b]">“{inspectTargetTabLabel}”</b>{' '}
+                    ของโครงการที่เลือกโดย<b>ไม่แก้ไขข้อมูลตั้งต้นใดๆ</b> พร้อมส่งสถานะ{' '}
+                    <b className="text-[#0d825b]">approved</b> กลับไปยังระบบสารบรรณ
+                  </>
+                ) : (
+                  <>
+                    ระบบจะอัปเดตเฉพาะช่องที่มีค่าส่งมาและแนบไฟล์เข้าแท็บ{' '}
+                    <b className="text-[#0d825b]">“{inspectTargetTabLabel}”</b>{' '}
+                    โดยคงค่าเดิมของช่องที่ไม่ได้ส่งไว้ตามเดิม พร้อมส่งสถานะ{' '}
+                    <b className="text-[#0d825b]">approved</b> กลับไปยังระบบสารบรรณ
+                  </>
+                )}
               </p>
             )}
 
@@ -711,7 +833,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
             </h3>
             <p className="mt-1.5 text-xs text-[#4b688a]">
               รายการ <b className="font-mono-num">{rejectTarget.queueId}</b> ·{' '}
-              {rejectTarget.subject}
+              {getQueueDisplayTitle(rejectTarget)}
             </p>
             <label className="mt-3 block text-xs font-semibold text-[#1d4069]">
               เหตุผลการปฏิเสธ / ส่งกลับ *
@@ -758,7 +880,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
             </h3>
             <p className="mt-2 text-xs leading-relaxed text-[#365375]">
               ต้องการลบคิว <b className="font-mono-num">{deleteTarget.queueId}</b> (
-              {deleteTarget.subject}) ออกจาก{' '}
+              {getQueueDisplayTitle(deleteTarget)}) ออกจาก{' '}
               <span className="font-mono-num">SarabanProcurementQueue</span> หรือไม่?
             </p>
             <div className="mt-5 flex justify-end gap-2">
