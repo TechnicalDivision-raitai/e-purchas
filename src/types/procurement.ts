@@ -10,6 +10,7 @@ export type PageId =
   | 'dashboard'
   | 'inbox'
   | 'register'
+  | 'budgets'
   | 'overdue'
   | 'saraban'
   | 'excel';
@@ -144,6 +145,19 @@ export interface ProjectDetails {
   voucherNotes?: string;
 }
 
+export interface BudgetPool {
+  id: string;
+  year: number;
+  code: string;
+  name: string;
+  fund: string;
+  department: string;
+  allocatedBudget: number;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ProjectRecord {
   id: string;
   code: string;
@@ -155,6 +169,7 @@ export interface ProjectRecord {
   method: string;
   fund: string;
   budget: number;
+  budgetPoolId?: string;
   reference: number;
   agreed: number;
   assignee: string;
@@ -180,6 +195,7 @@ export interface ProcurementState {
   version: number;
   steps: WorkflowStep[];
   rows: ProjectRecord[];
+  budgetPools?: BudgetPool[];
 }
 
 export type SortDirection = 'asc' | 'desc';

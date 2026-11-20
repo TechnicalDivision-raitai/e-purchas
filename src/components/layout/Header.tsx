@@ -1,13 +1,14 @@
-import { Cloud, HardDrive, Menu } from 'lucide-react';
+import { Cloud, HardDrive, Menu, Plus } from 'lucide-react';
 import { NAV_ITEMS } from '../../data/constants';
 import { isGoogleSyncConfigured } from '../../services/googleSync';
 import { useProcurement } from '../../storage/useProcurementStore';
 
 interface HeaderProps {
   onOpenMobileMenu: () => void;
+  onCreateProject?: () => void;
 }
 
-export function Header({ onOpenMobileMenu }: HeaderProps) {
+export function Header({ onOpenMobileMenu, onCreateProject }: HeaderProps) {
   const { page, user, syncState } = useProcurement();
   const currentTitle = NAV_ITEMS.find((n) => n.id === page)?.label || 'ภาพรวม';
   const avatarChar = user.role === 'admin' ? 'พ' : 'S';
@@ -22,8 +23,8 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         : 'ซิงค์ Google Sheet แล้ว';
 
   return (
-    <header className="no-print flex h-[72px] items-center justify-between border-b border-[#bdd3ec] bg-gradient-to-r from-[#f8fbff] via-[#eef5fd] to-[#dbeafa] px-5 lg:px-9">
-      <div className="flex items-center gap-3 text-xs text-[#547194]">
+    <header className="no-print sticky top-0 z-10 flex h-[72px] items-center justify-between gap-3 border-b border-[#bdd3ec] bg-gradient-to-r from-[#f8fbff] via-[#eef5fd] to-[#dbeafa] px-5 shadow-xs lg:px-9">
+      <div className="flex min-w-0 items-center gap-3 text-xs text-[#547194]">
         <button
           type="button"
           onClick={onOpenMobileMenu}
@@ -32,13 +33,23 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         >
           <Menu className="h-4 w-4" />
         </button>
-        <span>ระบบงานจัดซื้อจัดจ้าง</span>
-        <span className="text-[#9cb6d4]">/</span>
-        <b className="font-semibold text-[#0f2f57]">{currentTitle}</b>
+        <span className="hidden sm:inline">ระบบงานจัดซื้อจัดจ้าง</span>
+        <span className="hidden text-[#9cb6d4] sm:inline">/</span>
+        <b className="truncate font-semibold text-[#0f2f57]">{currentTitle}</b>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-[#3b5c85]">
-        <span className="hidden items-center gap-1.5 rounded border border-[#acc8ea] bg-[#e3effc] px-2.5 py-1 text-[11px] font-medium text-[#154b94] sm:inline-flex">
+      <div className="flex shrink-0 items-center gap-2.5 text-xs text-[#3b5c85] sm:gap-3">
+        {user.role === 'admin' && onCreateProject && (
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-[#0b387d] hover:to-[#135ba4]"
+          >
+            <Plus className="h-4 w-4" />
+            เพิ่มโครงการ
+          </button>
+        )}
+        <span className="hidden items-center gap-1.5 rounded border border-[#acc8ea] bg-[#e3effc] px-2.5 py-1 text-[11px] font-medium text-[#154b94] md:inline-flex">
           {cloudEnabled ? (
             <Cloud className="h-3.5 w-3.5 shrink-0" />
           ) : (
@@ -46,7 +57,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           )}
           {syncLabel}
         </span>
-        <span className="text-[11px] font-semibold text-[#2d507a]">
+        <span className="hidden text-[11px] font-semibold text-[#2d507a] sm:inline">
           {user.role === 'admin' ? 'Admin' : 'Staff'}
         </span>
         <span

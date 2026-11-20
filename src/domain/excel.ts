@@ -9,6 +9,7 @@ import {
 } from '../data/constants';
 import type {
   AttachmentCategory,
+  BudgetPool,
   CommitteeRole,
   FinancialSums,
   ImportErrorItem,
@@ -137,10 +138,56 @@ export function calculateFinancialSums(rows: ProjectRecord[]): FinancialSums {
   };
 }
 
-export function buildExcelTables(rows: ProjectRecord[]): WorkbookTables {
+export function buildExcelTables(
+  rows: ProjectRecord[],
+  budgetPools?: BudgetPool[],
+): WorkbookTables {
   const tables: WorkbookTables = Object.fromEntries(
     Object.entries(EXCEL_SCHEMA).map(([sheet, headers]) => [sheet, [[...headers]]]),
   );
+
+  if (Array.isArray(budgetPools) && budgetPools.length > 0) {
+    tables['BUDGET DATA'] = [
+      [
+        'ปีงบประมาณ',
+        'รหัสหมวด',
+        'ชื่อหมวดวงเงิน',
+        'แหล่งงบประมาณ',
+        'หน่วยงาน',
+        'วงเงินตั้งไว้',
+        'จำนวนรายการซื้อ',
+        'ตกลงซื้อแล้ว',
+        'กันวงเงินขอซื้อ',
+        'คงเหลือ',
+        'หมายเหตุ',
+      ],
+    ];
+    for (const pool of budgetPools) {
+      const linked = rows.filter(
+        (r) => r.budgetPoolId === pool.id && isFinancialEligible(r),
+      );
+      const agreed = linked.reduce((s, r) => s + Math.max(0, Number(r.agreed || 0)), 0);
+      const reserved = linked.reduce(
+        (s, r) =>
+          s + (Number(r.agreed || 0) > 0 ? 0 : Math.max(0, Number(r.budget || 0))),
+        0,
+      );
+      const allocated = Math.max(0, Number(pool.allocatedBudget || 0));
+      tables['BUDGET DATA'].push([
+        Number(pool.year),
+        pool.code || '',
+        pool.name,
+        pool.fund || '',
+        pool.department || '',
+        allocated,
+        linked.length,
+        agreed,
+        reserved,
+        allocated - (agreed + reserved),
+        pool.notes || '',
+      ]);
+    }
+  }
 
   for (const r of rows) {
     const code = String(r.code);

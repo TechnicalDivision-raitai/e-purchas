@@ -19,6 +19,7 @@ export function Toolbar() {
     ...new Set([
       currentFiscalYear(),
       ...state.rows.map((r) => Number(r.year)),
+      ...(state.budgetPools || []).map((p) => Number(p.year)),
       ...(viewFilter.year ? [Number(viewFilter.year)] : []),
     ]),
   ]
@@ -47,21 +48,23 @@ export function Toolbar() {
           </select>
         </label>
 
-        <label className="block text-[11px] font-semibold text-[#2c4b70]">
-          สถานะ
-          <select
-            value={viewFilter.status}
-            onChange={(e) => updateViewFilter({ status: e.target.value })}
-            className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
-          >
-            <option value="">ทุกสถานะ</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+        {page !== 'budgets' && (
+          <label className="block text-[11px] font-semibold text-[#2c4b70]">
+            สถานะ
+            <select
+              value={viewFilter.status}
+              onChange={(e) => updateViewFilter({ status: e.target.value })}
+              className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
+            >
+              <option value="">ทุกสถานะ</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block min-w-[220px] flex-1 max-w-[430px] text-[11px] font-semibold text-[#2c4b70]">
           ค้นหา
@@ -71,7 +74,11 @@ export function Toolbar() {
               type="search"
               value={viewFilter.q}
               onChange={(e) => updateViewFilter({ q: e.target.value })}
-              placeholder="ค้นหาเลขทะเบียน ชื่อโครงการ หรือหน่วยงาน…"
+              placeholder={
+                page === 'budgets'
+                  ? 'ค้นหาชื่อหมวดวงเงิน รหัสหมวด หรือแหล่งงบประมาณ…'
+                  : 'ค้นหาเลขทะเบียน ชื่อโครงการ หรือหน่วยงาน…'
+              }
               className="block min-h-[38px] w-full rounded-md border border-[#b6cde6] bg-white py-1.5 pr-3 pl-8 text-xs text-[#173659] placeholder:text-[#7690ad] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
             />
           </div>

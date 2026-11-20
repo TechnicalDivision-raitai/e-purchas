@@ -77,11 +77,15 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
   ],
   inbox: [
     'กล่องงานของฉัน',
-    'งานที่มอบหมายให้บัญชีผู้ใช้ปัจจุบัน · ไม่รวมเสร็จสิ้นและยกเลิก',
+    'แสดงโครงการที่เริ่มบันทึกข้อมูลในแท็บ 2. TOR และราคากลาง แล้ว · ไม่รวมเสร็จสิ้นและยกเลิก',
   ],
   register: [
     'ทะเบียนโครงการทั้งหมด',
     'จัดการข้อมูลโครงการ เอกสาร และประวัติการดำเนินงาน',
+  ],
+  budgets: [
+    'BUDGET DATA',
+    'จัดการวงเงินงบประมาณหมวดวัสดุ/ก้อนใหญ่ที่ทยอยจัดซื้อเป็นครั้งคราว พร้อมติดตามยอดใช้และคงเหลือ',
   ],
   overdue: [
     'งานเกินกำหนด',
@@ -96,6 +100,16 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
     'รองรับทะเบียนโครงการแบบ Upsert · เพิ่มรายการใหม่หรืออัปเดตตามรหัสโครงการ',
   ],
 };
+
+export const BUDGET_POOL_PRESETS: string[] = [
+  'ค่าวัสดุสำนักงาน',
+  'ค่าวัสดุก่อสร้าง',
+  'ค่าวัสดุไฟฟ้าและวิทยุ',
+  'ค่าวัสดุเชื้อเพลิงและหล่อลื่น',
+  'ค่าวัสดุงานบ้านงานครัว',
+  'ค่าวัสดุยานพาหนะและขนส่ง',
+  'ค่าบำรุงรักษาและซ่อมแซม',
+];
 
 export const SARABAN_ALLOWED_CATEGORIES = [
   'general_approval',
@@ -155,6 +169,7 @@ export const NAV_ITEMS: Array<{
   { id: 'dashboard', label: 'ภาพรวม' },
   { id: 'inbox', label: 'กล่องงานของฉัน' },
   { id: 'register', label: 'ทะเบียนโครงการทั้งหมด' },
+  { id: 'budgets', label: 'BUDGET DATA' },
   { id: 'overdue', label: 'งานเกินกำหนด' },
   { id: 'excel', label: 'นำเข้า / ส่งออก Excel', dividerBefore: true },
 ];
@@ -237,6 +252,7 @@ export function createSeedState(): ProcurementState {
     version: 2,
     steps: createDefaultSteps(),
     rows: [],
+    budgetPools: [],
   };
 }
 

@@ -6,6 +6,7 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
+  Wallet,
   X,
 } from 'lucide-react';
 import { NAV_ITEMS, USERS } from '../../data/constants';
@@ -17,6 +18,7 @@ const NAV_ICONS: Record<PageId, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
   inbox: Inbox,
   register: FolderKanban,
+  budgets: Wallet,
   overdue: ClockAlert,
   saraban: ArrowDownToLine,
   excel: FileSpreadsheet,

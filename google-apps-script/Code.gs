@@ -12,8 +12,10 @@
  */
 
 const DEFAULT_SHEET_NAME = 'ทะเบียนจัดซื้อจัดจ้าง';
+const BUDGET_POOLS_SUMMARY_SHEET = 'BUDGET DATA';
 const RAW_PROJECTS_SHEET = '_DATA_PROJECTS_JSON';
 const RAW_WORKFLOW_SHEET = '_DATA_WORKFLOW_JSON';
+const RAW_BUDGET_POOLS_SHEET = '_DATA_BUDGET_POOLS_JSON';
 const DEFAULT_DRIVE_FOLDER_NAME = 'เอกสารจัดซื้อจัดจ้าง_กองช่าง';
 const CHUNK_SIZE = 40000; // ป้องกันเกินลิมิต 50,000 ตัวอักษร/เซลล์ ของ Google Sheet
 
@@ -68,6 +70,7 @@ function doGet(e) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const rows = readChunkedJsonList_(ss, RAW_PROJECTS_SHEET);
       const steps = readChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET);
+      const budgetPools = readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET);
 
       return jsonResponse_({
         status: 'ok',
@@ -75,6 +78,7 @@ function doGet(e) {
         rows: rows || [],
         projects: rows || [],
         steps: Array.isArray(steps) && steps.length > 0 ? steps : undefined,
+        budgetPools: Array.isArray(budgetPools) ? budgetPools : [],
       });
     }
 
@@ -450,10 +454,49 @@ function handleSyncProjects_(body) {
       ? body.projects
       : [];
   const steps = Array.isArray(body.steps) ? body.steps : [];
+  const hasBudgetPools = Array.isArray(body.budgetPools);
+  const budgetPools = hasBudgetPools ? body.budgetPools : [];
 
   writeChunkedJsonList_(ss, RAW_PROJECTS_SHEET, rows);
   if (steps.length > 0) {
     writeChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET, steps);
+  }
+  if (hasBudgetPools) {
+    writeChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET, budgetPools);
+    let poolSheet =
+      ss.getSheetByName(BUDGET_POOLS_SUMMARY_SHEET) ||
+      ss.getSheetByName('BUDGET  DATA');
+    if (!poolSheet) {
+      poolSheet = ss.insertSheet(BUDGET_POOLS_SUMMARY_SHEET);
+    }
+    poolSheet.clearContents();
+    const poolSummaryRows = [
+      [
+        'id',
+        'ปีงบประมาณ',
+        'รหัสหมวด',
+        'ชื่อหมวดวงเงิน',
+        'แหล่งงบประมาณ',
+        'หน่วยงาน',
+        'วงเงินตั้งไว้ (บาท)',
+        'หมายเหตุ',
+      ],
+    ];
+    budgetPools.forEach(function (p) {
+      poolSummaryRows.push([
+        String(p.id || ''),
+        Number(p.year || 0),
+        String(p.code || ''),
+        String(p.name || ''),
+        String(p.fund || ''),
+        String(p.department || ''),
+        Number(p.allocatedBudget || 0),
+        String(p.notes || ''),
+      ]);
+    });
+    poolSheet
+      .getRange(1, 1, poolSummaryRows.length, poolSummaryRows[0].length)
+      .setValues(poolSummaryRows);
   }
 
   // อัปเดตชีตสรุป 'ทะเบียนจัดซื้อจัดจ้าง' ให้อ่านง่ายใน Google Sheet

@@ -38,6 +38,7 @@ import {
   syncProjectsToGoogleSheet,
 } from '../services/googleSync';
 import type {
+  BudgetPool,
   PageId,
   ProcurementState,
   ProjectRecord,
@@ -71,6 +72,8 @@ interface ProcurementContextValue {
   toggleSort: (key: ViewFilter['sort']) => void;
   commit: (mutator: (draft: ProcurementState) => void) => boolean;
   deleteProject: (id: string) => boolean;
+  saveBudgetPool: (pool: BudgetPool) => boolean;
+  deleteBudgetPool: (id: string) => boolean;
   refreshFromStorage: () => Promise<void>;
   refreshSarabanQueue: (notifyOnSuccess?: boolean) => Promise<void>;
   approveSarabanQueueItem: (
@@ -203,6 +206,7 @@ function normalizeLoadedState(raw: ProcurementState): ProcurementState {
       ...r,
       step: normalizeLegacyStepId(r.step),
     })),
+    budgetPools: Array.isArray(raw.budgetPools) ? raw.budgetPools : [],
   };
 }
 
@@ -305,10 +309,21 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               : prev.rows.length > 0
                 ? prev.rows
                 : remote.rows || prev.rows;
+
+            const prevPools = prev.budgetPools || [];
+            const remoteHasPools =
+              Array.isArray(remote.budgetPools) && remote.budgetPools.length > 0;
+            const mergedPools = remoteHasPools
+              ? remote.budgetPools!
+              : prevPools.length > 0
+                ? prevPools
+                : remote.budgetPools || prevPools;
+
             const next = normalizeLoadedState({
               version: prev.version,
               steps: createDefaultSteps(),
               rows: mergedRows,
+              budgetPools: mergedPools,
             });
             persistStateLocally(next);
             return next;
@@ -347,13 +362,26 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void loadStateFromIndexedDB().then((idbState) => {
-      if (idbState && Array.isArray(idbState.rows) && idbState.rows.length > 0) {
+      if (
+        idbState &&
+        ((Array.isArray(idbState.rows) && idbState.rows.length > 0) ||
+          (Array.isArray(idbState.budgetPools) && idbState.budgetPools.length > 0))
+      ) {
         setState((prev) => {
           const normalized = normalizeLoadedState(idbState);
-          if (prev.rows.length === 0) return normalized;
+          if (prev.rows.length === 0 && (prev.budgetPools || []).length === 0) {
+            return normalized;
+          }
           return {
             ...prev,
-            rows: mergeLocalFileBlobs(prev.rows, normalized.rows),
+            rows:
+              prev.rows.length > 0
+                ? mergeLocalFileBlobs(prev.rows, normalized.rows)
+                : normalized.rows,
+            budgetPools:
+              (prev.budgetPools || []).length > 0
+                ? prev.budgetPools
+                : normalized.budgetPools,
           };
         });
       }
@@ -523,6 +551,51 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         const index = draft.rows.findIndex((r) => r.id === id);
         if (index === -1) throw new Error('ไม่พบโครงการ');
         draft.rows.splice(index, 1);
+      });
+    },
+    [commit],
+  );
+
+  const saveBudgetPool = useCallback(
+    (pool: BudgetPool): boolean => {
+      return commit((draft) => {
+        if (!Array.isArray(draft.budgetPools)) {
+          draft.budgetPools = [];
+        }
+        const nowIso = new Date().toISOString();
+        const idx = draft.budgetPools.findIndex((p) => p.id === pool.id);
+        if (idx >= 0) {
+          draft.budgetPools[idx] = {
+            ...draft.budgetPools[idx],
+            ...pool,
+            updatedAt: nowIso,
+          };
+        } else {
+          draft.budgetPools.push({
+            ...pool,
+            createdAt: pool.createdAt || nowIso,
+            updatedAt: nowIso,
+          });
+        }
+      });
+    },
+    [commit],
+  );
+
+  const deleteBudgetPool = useCallback(
+    (id: string): boolean => {
+      return commit((draft) => {
+        const list = draft.budgetPools || [];
+        const idx = list.findIndex((p) => p.id === id);
+        if (idx === -1) throw new Error('ไม่พบหมวดวงเงินงบประมาณ');
+        list.splice(idx, 1);
+        draft.budgetPools = list;
+        // Unlink any projects referencing the deleted pool without deleting those purchase records
+        for (const row of draft.rows) {
+          if (row.budgetPoolId === id) {
+            row.budgetPoolId = undefined;
+          }
+        }
       });
     },
     [commit],
@@ -765,6 +838,8 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     toggleSort,
     commit,
     deleteProject,
+    saveBudgetPool,
+    deleteBudgetPool,
     refreshFromStorage,
     refreshSarabanQueue,
     approveSarabanQueueItem,

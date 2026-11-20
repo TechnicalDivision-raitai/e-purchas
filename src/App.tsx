@@ -1,4 +1,3 @@
-import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Toast } from './components/common/Toast';
 import { Header } from './components/layout/Header';
@@ -7,6 +6,7 @@ import { Toolbar } from './components/layout/Toolbar';
 import { LoginModal } from './components/modals/LoginModal';
 import { ProjectEditorModal } from './components/modals/ProjectEditorModal';
 import { ProjectViewModal } from './components/modals/ProjectViewModal';
+import { BudgetPoolsPage } from './components/pages/BudgetPoolsPage';
 import { DashboardPage } from './components/pages/DashboardPage';
 import { ExcelPage } from './components/pages/ExcelPage';
 import { InboxPage } from './components/pages/InboxPage';
@@ -32,6 +32,7 @@ function WorkspaceShell() {
   const [editorState, setEditorState] = useState<{
     id: string;
     tab: ProjectTabId;
+    budgetPoolId?: string;
   } | null>(null);
   const [viewState, setViewState] = useState<{
     id: string;
@@ -49,13 +50,13 @@ function WorkspaceShell() {
 
   const [pageTitle, pageSubtitle] = PAGE_TITLES[page];
 
-  const handleOpenCreate = () => {
+  const handleOpenCreate = (budgetPoolId?: string) => {
     if (user.role !== 'admin') {
       showToast('ไม่มีสิทธิ์แก้ไข');
       return;
     }
     setViewState(null);
-    setEditorState({ id: 'new', tab: 'general' });
+    setEditorState({ id: 'new', tab: 'general', budgetPoolId });
   };
 
   const handleOpenEdit = (id: string, tab: ProjectTabId = 'general') => {
@@ -95,7 +96,10 @@ function WorkspaceShell() {
       />
 
       <div className="lg:pl-[248px]">
-        <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+        <Header
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          onCreateProject={() => handleOpenCreate()}
+        />
 
         <main className="no-print mx-auto max-w-[1740px] px-4 py-6 sm:px-7 lg:px-9">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -108,17 +112,6 @@ function WorkspaceShell() {
               </h1>
               <p className="mt-1 text-xs text-[#4a6688]">{pageSubtitle}</p>
             </div>
-
-            {user.role === 'admin' && (
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-[#0b387d] hover:to-[#135ba4]"
-              >
-                <Plus className="h-4 w-4" />
-                เพิ่มโครงการ
-              </button>
-            )}
           </div>
 
           <Toolbar />
@@ -127,7 +120,16 @@ function WorkspaceShell() {
             <DashboardPage
               onViewProject={(id) => handleOpenView(id)}
               onEditProject={(id) => handleOpenEdit(id)}
-              onCreateProject={handleOpenCreate}
+              onCreateProject={() => handleOpenCreate()}
+              onCreatePurchaseFromPool={(poolId) => handleOpenCreate(poolId)}
+            />
+          )}
+
+          {page === 'budgets' && (
+            <BudgetPoolsPage
+              onCreatePurchaseFromPool={(poolId) => handleOpenCreate(poolId)}
+              onViewProject={(id) => handleOpenView(id)}
+              onEditProject={(id) => handleOpenEdit(id)}
             />
           )}
 
@@ -135,7 +137,7 @@ function WorkspaceShell() {
             <InboxPage
               rows={filteredRows}
               onViewProject={(id, tab) => handleOpenView(id, tab)}
-              onCreateProject={handleOpenCreate}
+              onCreateProject={() => handleOpenCreate()}
             />
           )}
 
@@ -145,7 +147,7 @@ function WorkspaceShell() {
               title="รายการโครงการ"
               onViewProject={(id) => handleOpenView(id)}
               onEditProject={(id) => handleOpenEdit(id)}
-              onCreateProject={handleOpenCreate}
+              onCreateProject={() => handleOpenCreate()}
             />
           )}
 
@@ -164,6 +166,7 @@ function WorkspaceShell() {
         <ProjectEditorModal
           projectId={editorState.id}
           initialTab={editorState.tab}
+          initialBudgetPoolId={editorState.budgetPoolId}
           onClose={() => setEditorState(null)}
         />
       )}

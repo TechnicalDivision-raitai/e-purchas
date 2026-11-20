@@ -43,7 +43,7 @@ export function ExcelPage() {
         return;
       }
       exportWorkbookFile(
-        buildExcelTables(state.rows),
+        buildExcelTables(state.rows, state.budgetPools),
         'ทะเบียนโครงการครบทุกหมวด.xlsx',
       );
       showToast('สร้างไฟล์ส่งออกครบทุกหมวดแล้ว');

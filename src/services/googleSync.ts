@@ -1,6 +1,7 @@
 import { SARABAN_ALLOWED_CATEGORIES } from '../data/constants';
 import type {
   AttachmentCategory,
+  BudgetPool,
   ProcurementState,
   ProjectRecord,
   SarabanDocCategory,
@@ -28,10 +29,12 @@ interface GoogleSheetPullResponse {
   projects?: ProjectRecord[];
   rows?: ProjectRecord[];
   steps?: WorkflowStep[];
+  budgetPools?: BudgetPool[];
   data?: {
     rows?: ProjectRecord[];
     projects?: ProjectRecord[];
     steps?: WorkflowStep[];
+    budgetPools?: BudgetPool[];
   };
   error?: string;
   message?: string;
@@ -77,14 +80,16 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
     payload.data?.projects;
 
   const steps = payload.steps || payload.data?.steps;
+  const budgetPools = payload.budgetPools || payload.data?.budgetPools;
 
-  if (!Array.isArray(rows) && !Array.isArray(steps)) {
+  if (!Array.isArray(rows) && !Array.isArray(steps) && !Array.isArray(budgetPools)) {
     return null;
   }
 
   return {
     ...(Array.isArray(rows) ? { rows } : {}),
     ...(Array.isArray(steps) && steps.length > 0 ? { steps } : {}),
+    ...(Array.isArray(budgetPools) ? { budgetPools } : {}),
   };
 }
 
@@ -117,6 +122,7 @@ export async function syncProjectsToGoogleSheet(
       steps: state.steps,
       rows: sanitizedRows,
       projects: sanitizedRows,
+      budgetPools: state.budgetPools || [],
       syncedAt: new Date().toISOString(),
     }),
   });

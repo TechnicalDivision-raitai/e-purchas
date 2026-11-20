@@ -22,6 +22,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { PROJECT_TABS } from '../../data/constants';
+import { calculateBudgetPoolUsage } from '../../domain/budgetPools';
 import {
   canEditProject,
   createAcceptanceDraft,
@@ -89,6 +90,12 @@ export function ProjectViewModal({
 
   const editable = canEditProject(user, project);
   const details = project.projectDetails || {};
+  const linkedPool = project.budgetPoolId
+    ? (state.budgetPools || []).find((p) => p.id === project.budgetPoolId)
+    : undefined;
+  const linkedPoolUsage = linkedPool
+    ? calculateBudgetPoolUsage(linkedPool, state.rows)
+    : undefined;
   const acceptance = createAcceptanceDraft(details);
   const installmentSummary = getInstallmentSummary(details);
   const voucherEntries = installmentSummary.voucherEntries;
@@ -450,7 +457,19 @@ export function ProjectViewModal({
                       ['ประเภทงาน', project.type],
                       ['วิธีจัดซื้อจัดจ้าง', project.method],
                       ['แหล่งงบประมาณ', project.fund],
-                      ['วงเงินงบประมาณ', formatAmountOrDash(project.budget), 'money'],
+                      ...(linkedPool && linkedPoolUsage
+                        ? ([
+                            [
+                              'รูปแบบการใช้งบประมาณ',
+                              `BUDGET DATA: ${linkedPool.name} (ปีงบฯ ${linkedPool.year}) · คงเหลือ ฿ ${formatMoney(linkedPoolUsage.remainingAmount)} จาก ฿ ${formatMoney(linkedPool.allocatedBudget)}`,
+                            ],
+                          ] as [string, string][])
+                        : []),
+                      [
+                        linkedPool ? 'วงเงินขอซื้อครั้งนี้' : 'วงเงินงบประมาณ',
+                        formatAmountOrDash(project.budget),
+                        'money',
+                      ],
                       ['ผู้รับผิดชอบ', getResponsibleName(project)],
                       ['วันที่ขออนุมัติ', formatThaiDate(project.start)],
                       ['รายละเอียดโครงการ/รายการจัดซื้อจัดจ้าง', project.notes],
