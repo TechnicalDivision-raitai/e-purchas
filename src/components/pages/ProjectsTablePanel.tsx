@@ -33,9 +33,6 @@ export function ProjectsTablePanel({
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<ProjectRecord | null>(
     null,
   );
-  const poolNameById = new Map(
-    (state.budgetPools || []).map((p) => [p.id, p.name]),
-  );
 
   const handleExportFiltered = () => {
     try {
@@ -186,15 +183,8 @@ export function ProjectsTablePanel({
                     <div className="font-semibold leading-snug text-[#122e4f] break-words">
                       {r.title}
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-[#557191] break-words">
-                      <span>
-                        {r.department} · {r.type}
-                      </span>
-                      {r.budgetPoolId && poolNameById.get(r.budgetPoolId) && (
-                        <span className="rounded border border-[#b5d0ec] bg-[#edf5fe] px-1.5 py-0.5 font-medium text-[#154c96]">
-                          BUDGET DATA: {poolNameById.get(r.budgetPoolId)}
-                        </span>
-                      )}
+                    <div className="mt-0.5 text-[10px] text-[#557191] break-words">
+                      {r.department} · {r.type}
                     </div>
                   </td>
                   <td className="px-3.5 py-3.5 align-middle">

@@ -543,15 +543,40 @@ function handleSyncProjects_(body) {
   };
 }
 
+function ensureViewSharing_(driveResource) {
+  if (!driveResource) return false;
+  try {
+    driveResource.setSharing(
+      DriveApp.Access.ANYONE_WITH_LINK,
+      DriveApp.Permission.VIEW,
+    );
+    return true;
+  } catch (err) {
+    // กรณีบัญชีองค์กร (Google Workspace) จำกัดไม่ให้แชร์สาธารณะ ให้ลองแชร์ภายในองค์กรแทน
+    try {
+      driveResource.setSharing(
+        DriveApp.Access.DOMAIN_WITH_LINK,
+        DriveApp.Permission.VIEW,
+      );
+      return true;
+    } catch (_innerErr) {
+      return false;
+    }
+  }
+}
+
 function getOrCreateDriveFolder_(folderId) {
+  let folder;
   if (folderId) {
-    return DriveApp.getFolderById(folderId);
+    folder = DriveApp.getFolderById(folderId);
+  } else {
+    const folders = DriveApp.getFoldersByName(DEFAULT_DRIVE_FOLDER_NAME);
+    folder = folders.hasNext()
+      ? folders.next()
+      : DriveApp.createFolder(DEFAULT_DRIVE_FOLDER_NAME);
   }
-  const folders = DriveApp.getFoldersByName(DEFAULT_DRIVE_FOLDER_NAME);
-  if (folders.hasNext()) {
-    return folders.next();
-  }
-  return DriveApp.createFolder(DEFAULT_DRIVE_FOLDER_NAME);
+  ensureViewSharing_(folder);
+  return folder;
 }
 
 function handleUploadFile_(body) {
@@ -569,13 +594,47 @@ function handleUploadFile_(body) {
   const folder = getOrCreateDriveFolder_(folderId);
   const created = folder.createFile(blob);
 
+  // ตั้งค่าสิทธิ์แชร์อัตโนมัติให้ทุกคนที่มีลิงก์สามารถเปิดดูไฟล์ได้ทันที
+  ensureViewSharing_(created);
+
+  const fileId = created.getId();
+  const shareUrl = 'https://drive.google.com/file/d/' + fileId + '/view?usp=sharing';
+
   return {
     status: 'ok',
     success: true,
-    fileId: created.getId(),
-    url: created.getUrl(),
-    webViewLink: created.getUrl(),
+    fileId: fileId,
+    url: shareUrl,
+    webViewLink: shareUrl,
   };
+}
+
+/**
+ * ฟังก์ชันช่วยปลดล็อกสิทธิ์ไฟล์เดิมทั้งหมดในโฟลเดอร์ "เอกสารจัดซื้อจัดจ้าง_กองช่าง"
+ * วิธีใช้: เปิดหน้า Apps Script Editor -> เลือกฟังก์ชัน fixExistingAttachmentPermissions -> กด Run (เรียกใช้)
+ */
+function fixExistingAttachmentPermissions() {
+  const folder = getOrCreateDriveFolder_('');
+  let updatedCount = 0;
+
+  function processFolder(currentFolder) {
+    ensureViewSharing_(currentFolder);
+    const files = currentFolder.getFiles();
+    while (files.hasNext()) {
+      const file = files.next();
+      if (ensureViewSharing_(file)) {
+        updatedCount += 1;
+      }
+    }
+    const subFolders = currentFolder.getFolders();
+    while (subFolders.hasNext()) {
+      processFolder(subFolders.next());
+    }
+  }
+
+  processFolder(folder);
+  Logger.log('อัปเดตสิทธิ์การอ่านสำเร็จจำนวน ' + updatedCount + ' ไฟล์');
+  return updatedCount;
 }
 
 /* ============================================================================
