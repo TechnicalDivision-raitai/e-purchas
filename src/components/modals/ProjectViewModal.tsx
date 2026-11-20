@@ -463,13 +463,21 @@ export function ProjectViewModal({
                               'รูปแบบการใช้งบประมาณ',
                               `BUDGET DATA: ${linkedPool.name} (ปีงบฯ ${linkedPool.year}) · คงเหลือ ฿ ${formatMoney(linkedPoolUsage.remainingAmount)} จาก ฿ ${formatMoney(linkedPool.allocatedBudget)}`,
                             ],
-                          ] as [string, string][])
-                        : []),
-                      [
-                        linkedPool ? 'วงเงินขอซื้อครั้งนี้' : 'วงเงินงบประมาณ',
-                        formatAmountOrDash(project.budget),
-                        'money',
-                      ],
+                            [
+                              'วงเงินการขอซื้อ (อ้างอิงราคากลาง)',
+                              project.reference > 0
+                                ? formatAmountOrDash(project.reference)
+                                : 'รออ้างอิงจากราคากลางในแท็บ 2',
+                              project.reference > 0 ? 'money' : undefined,
+                            ],
+                          ] as Array<[string, string, 'money'?]>)
+                        : ([
+                            [
+                              'วงเงินงบประมาณ',
+                              formatAmountOrDash(project.budget),
+                              'money',
+                            ],
+                          ] as Array<[string, string, 'money'?]>)),
                       ['ผู้รับผิดชอบ', getResponsibleName(project)],
                       ['วันที่ขออนุมัติ', formatThaiDate(project.start)],
                       ['รายละเอียดโครงการ/รายการจัดซื้อจัดจ้าง', project.notes],

@@ -257,7 +257,7 @@ export function DashboardPage({
                 <div
                   className="h-full bg-[#e39c2b] transition-all"
                   style={{ width: `${reservedRatio}%` }}
-                  title={`กันวงเงินขอซื้อ (BUDGET DATA) ฿ ${formatMoney(overview.totalReserved)}`}
+                  title={`กันวงเงินตามราคากลาง (BUDGET DATA) ฿ ${formatMoney(overview.totalReserved)}`}
                 />
               )}
             </div>
@@ -281,7 +281,7 @@ export function DashboardPage({
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-[#35557a]">
                     <span className="inline-block h-2 w-2 rounded-xs bg-[#e39c2b]" />
-                    กันวงเงินขอซื้อ (BUDGET DATA)
+                    กันวงเงินตามราคากลาง (BUDGET DATA)
                   </span>
                   <b className="font-mono-num font-semibold text-[#a66d0d]">
                     ฿ {formatMoney(overview.totalReserved)}

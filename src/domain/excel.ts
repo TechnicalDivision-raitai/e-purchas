@@ -157,7 +157,7 @@ export function buildExcelTables(
         'วงเงินตั้งไว้',
         'จำนวนรายการซื้อ',
         'ตกลงซื้อแล้ว',
-        'กันวงเงินขอซื้อ',
+        'กันวงเงิน (ราคากลาง)',
         'คงเหลือ',
         'หมายเหตุ',
       ],
@@ -169,7 +169,7 @@ export function buildExcelTables(
       const agreed = linked.reduce((s, r) => s + Math.max(0, Number(r.agreed || 0)), 0);
       const reserved = linked.reduce(
         (s, r) =>
-          s + (Number(r.agreed || 0) > 0 ? 0 : Math.max(0, Number(r.budget || 0))),
+          s + (Number(r.agreed || 0) > 0 ? 0 : Math.max(0, Number(r.reference || 0))),
         0,
       );
       const allocated = Math.max(0, Number(pool.allocatedBudget || 0));

@@ -528,7 +528,7 @@ export function BudgetPoolsPage({
                         <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
                           <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4d6c8f]">
                             <span className="inline-block h-2 w-2 rounded-xs bg-[#e39c2b]" />
-                            กันวงเงินขอซื้อ
+                            กันวงเงิน (ราคากลาง)
                           </div>
                           <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#a66d0d]">
                             ฿ {formatMoney(usage.reservedAmount)}
@@ -607,7 +607,7 @@ export function BudgetPoolsPage({
                                 <tr className="border-b border-[#c5daf0] bg-[#e5f0fc] text-[#163c6b]">
                                   <th className="px-3 py-2 font-semibold">เลขทะเบียน</th>
                                   <th className="px-3 py-2 font-semibold">รายการจัดซื้อ</th>
-                                  <th className="px-3 py-2 text-right font-semibold">ขอซื้อครั้งนี้</th>
+                                  <th className="px-3 py-2 text-right font-semibold">ราคากลาง</th>
                                   <th className="px-3 py-2 text-right font-semibold">ตกลงซื้อ</th>
                                   <th className="px-3 py-2 text-right font-semibold">ตัดวงเงินจริง</th>
                                   <th className="px-3 py-2 text-right font-semibold">ฎีกาเบิกจ่าย</th>
@@ -640,7 +640,9 @@ export function BudgetPoolsPage({
                                         )}
                                       </td>
                                       <td className="px-3 py-2.5 text-right font-mono-num text-[#4a6688]">
-                                        {formatMoney(proj.budget)}
+                                        {proj.reference > 0
+                                          ? formatMoney(proj.reference)
+                                          : '—'}
                                       </td>
                                       <td className="px-3 py-2.5 text-right font-mono-num font-medium text-[#144fa6]">
                                         {proj.agreed > 0

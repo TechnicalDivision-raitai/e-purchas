@@ -284,9 +284,9 @@ export function ProjectEditorModal({
       return 0;
     }
     const agreed = Math.max(0, Number(draft.agreed) || 0);
-    const requested = Math.max(0, Number(draft.budget) || 0);
-    return agreed > 0 ? agreed : requested;
-  }, [draft.agreed, draft.budget, draft.statusMode, draft.manualStatus]);
+    const reference = Math.max(0, Number(draft.reference) || 0);
+    return agreed > 0 ? agreed : reference;
+  }, [draft.agreed, draft.reference, draft.statusMode, draft.manualStatus]);
 
   const handleQuickCreatePool = () => {
     setQuickPoolError('');
@@ -628,7 +628,7 @@ export function ProjectEditorModal({
         title: draft.title.trim(),
         method: draft.method.trim(),
         fund: draft.fund.trim(),
-        budget: Number(draft.budget) || 0,
+        budget: draft.budgetMode === 'pool' ? 0 : Number(draft.budget) || 0,
         budgetPoolId:
           draft.budgetMode === 'pool' && draft.budgetPoolId
             ? draft.budgetPoolId
@@ -1653,7 +1653,9 @@ export function ProjectEditorModal({
                                     {formatMoney(currentItemPoolAmount)}
                                     {Number(draft.agreed) > 0
                                       ? ' (ตามวงเงินตกลง)'
-                                      : ' (กันวงเงินตามยอดขอซื้อ)'}
+                                      : Number(draft.reference) > 0
+                                        ? ' (อ้างอิงราคากลาง)'
+                                        : ' (อ้างอิงราคากลางในแท็บ 2)'}
                                   </span>
                                 </div>
                                 {isOver && (
@@ -1699,22 +1701,22 @@ export function ProjectEditorModal({
                       </div>
                     </label>
 
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      {draft.budgetMode === 'pool'
-                        ? 'วงเงินขอซื้อครั้งนี้ (บาท) *'
-                        : 'วงเงินงบประมาณ (บาท) *'}
-                      <input
-                        type="number"
-                        required
-                        min={0}
-                        step="0.01"
-                        value={draft.budget}
-                        onChange={(e) =>
-                          setDraft((p) => ({ ...p, budget: e.target.value }))
-                        }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
+                    {draft.budgetMode !== 'pool' && (
+                      <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                        วงเงินงบประมาณ (บาท) *
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          step="0.01"
+                          value={draft.budget}
+                          onChange={(e) =>
+                            setDraft((p) => ({ ...p, budget: e.target.value }))
+                          }
+                          className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
+                        />
+                      </label>
+                    )}
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ผู้รับผิดชอบ *
@@ -1847,7 +1849,9 @@ export function ProjectEditorModal({
                     </label>
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      ราคากลาง (บาท)
+                      {draft.budgetMode === 'pool'
+                        ? 'ราคากลาง / วงเงินขอซื้อ (บาท)'
+                        : 'ราคากลาง (บาท)'}
                       <input
                         type="number"
                         min={0}
@@ -1862,6 +1866,17 @@ export function ProjectEditorModal({
                       <span className="mt-1 block font-mono-num text-[11px] font-normal text-[#6f8ca9]">
                         {formatMoney(draft.reference)} บาท
                       </span>
+                      {selectedBudgetPool && selectedPoolOtherUsage && (
+                        <span className="mt-1 block text-[10.5px] font-medium text-[#154c96]">
+                          อ้างอิงตัดยอดจาก BUDGET DATA “{selectedBudgetPool.name}” ·
+                          คงเหลือหลังรายการนี้ ฿{' '}
+                          {formatMoney(
+                            Math.max(0, Number(selectedBudgetPool.allocatedBudget || 0)) -
+                              selectedPoolOtherUsage.usedAmount -
+                              currentItemPoolAmount,
+                          )}
+                        </span>
+                      )}
                     </label>
 
                     {!draft.details.torPreparedDate &&

@@ -48,12 +48,12 @@ export interface CombinedFinancialOverview {
  * Calculates how much a single drawdown purchase consumes from its BudgetPool:
  * - Excluded statuses ('พักงาน', 'ยกเลิก') consume 0.
  * - Once an agreed/contract amount (วงเงินตกลง) > 0 is recorded, that actual agreed amount
- *   replaces the initial requested estimate so any savings automatically return to the pool.
- * - While agreed === 0 (pending approval/TOR/ordering), the requested budget (วงเงินขอซื้อครั้งนี้)
+ *   replaces the reference price so any savings automatically return to the pool.
+ * - While agreed === 0 (before purchase order), the reference price (ราคากลาง)
  *   is counted as reserved (กันวงเงินไว้).
  */
 export function getProjectPoolCommitment(
-  project: Pick<ProjectRecord, 'status' | 'budget' | 'agreed' | 'projectDetails'>,
+  project: Pick<ProjectRecord, 'status' | 'reference' | 'agreed' | 'projectDetails'>,
 ): ProjectPoolCommitment {
   if (!isFinancialEligible(project)) {
     return {
@@ -65,8 +65,8 @@ export function getProjectPoolCommitment(
   }
 
   const agreedAmount = Math.max(0, Number(project.agreed || 0));
-  const requestedAmount = Math.max(0, Number(project.budget || 0));
-  const reservedAmount = agreedAmount > 0 ? 0 : requestedAmount;
+  const referenceAmount = Math.max(0, Number(project.reference || 0));
+  const reservedAmount = agreedAmount > 0 ? 0 : referenceAmount;
   const usedAmount = agreedAmount > 0 ? agreedAmount : reservedAmount;
   const voucherAmount = getTotalVoucherAmount(project.projectDetails);
 
