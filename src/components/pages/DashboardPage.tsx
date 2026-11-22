@@ -385,7 +385,7 @@ export function DashboardPage({
     ? statusSegments.find((s) => s.id === hoveredBucketId) || null
     : null;
 
-  const donutRadius = 52;
+  const donutRadius = 51;
   const donutCircumference = 2 * Math.PI * donutRadius;
 
   return (
@@ -531,7 +531,7 @@ export function DashboardPage({
           <div className="flex flex-1 flex-col justify-between p-5">
             <div className="flex flex-col items-center gap-5 sm:flex-row">
               {/* Donut Chart */}
-              <div className="relative h-[138px] w-[138px] shrink-0">
+              <div className="relative h-[144px] w-[144px] shrink-0">
                 <svg
                   viewBox="0 0 140 140"
                   className="h-full w-full"
@@ -544,7 +544,7 @@ export function DashboardPage({
                     r={donutRadius}
                     fill="none"
                     stroke="#e6eff8"
-                    strokeWidth="18"
+                    strokeWidth="30"
                   />
 
                   {dashboardRows.length > 0 && (
@@ -571,13 +571,13 @@ export function DashboardPage({
                                 r={donutRadius}
                                 fill="none"
                                 stroke={seg.color}
-                                strokeWidth={hoveredBucketId === seg.id ? 21 : 18}
+                                strokeWidth={hoveredBucketId === seg.id ? 34 : 30}
                                 strokeDasharray={`${segLen} ${Math.max(
                                   0,
                                   donutCircumference - segLen,
                                 )}`}
                                 strokeDashoffset={offset}
-                                className="cursor-pointer transition-opacity duration-150"
+                                className="cursor-pointer transition-all duration-150"
                                 style={{ opacity: isDimmed ? 0.3 : 1 }}
                                 onMouseEnter={() => setHoveredBucketId(seg.id)}
                                 onMouseLeave={() => setHoveredBucketId(null)}
@@ -602,22 +602,26 @@ export function DashboardPage({
                   )}
                 </svg>
 
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
                   {activeHoveredBucket ? (
                     <>
-                      <span className="font-mono-num text-[22px] font-bold leading-none text-[#0f2a4a] tabular-nums">
+                      <span className="font-mono-num text-[20px] font-bold leading-none text-[#0f2a4a] tabular-nums">
                         {activeHoveredBucket.count}
                       </span>
-                      <span className="mt-1 text-[10.5px] font-semibold text-[#47688d] tabular-nums">
+                      <span className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-bold leading-none text-[#33547a] tabular-nums">
+                        <span
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: activeHoveredBucket.color }}
+                        />
                         {activeHoveredBucket.pct.toFixed(0)}%
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="font-mono-num text-[26px] font-bold leading-none text-[#0f2a4a] tabular-nums">
+                      <span className="font-mono-num text-[22px] font-bold leading-none text-[#0f2a4a] tabular-nums">
                         {dashboardRows.length}
                       </span>
-                      <span className="mt-1 text-[11px] font-medium text-[#526f8f]">
+                      <span className="mt-1 text-[10px] font-semibold leading-none text-[#526f8f]">
                         โครงการ
                       </span>
                     </>
