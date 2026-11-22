@@ -16,6 +16,7 @@ const BUDGET_POOLS_SUMMARY_SHEET = 'BUDGET DATA';
 const RAW_PROJECTS_SHEET = '_DATA_PROJECTS_JSON';
 const RAW_WORKFLOW_SHEET = '_DATA_WORKFLOW_JSON';
 const RAW_BUDGET_POOLS_SHEET = '_DATA_BUDGET_POOLS_JSON';
+const RAW_EXPENSE_CATEGORIES_SHEET = '_DATA_EXPENSE_CATEGORIES_JSON';
 const DEFAULT_DRIVE_FOLDER_NAME = 'เอกสารจัดซื้อจัดจ้าง_กองช่าง';
 const CHUNK_SIZE = 40000; // ป้องกันเกินลิมิต 50,000 ตัวอักษร/เซลล์ ของ Google Sheet
 
@@ -71,6 +72,10 @@ function doGet(e) {
       const rows = readChunkedJsonList_(ss, RAW_PROJECTS_SHEET);
       const steps = readChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET);
       const budgetPools = readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET);
+      const expenseCategories = readChunkedSingleJson_(
+        ss,
+        RAW_EXPENSE_CATEGORIES_SHEET,
+      );
 
       return jsonResponse_({
         status: 'ok',
@@ -79,6 +84,10 @@ function doGet(e) {
         projects: rows || [],
         steps: Array.isArray(steps) && steps.length > 0 ? steps : undefined,
         budgetPools: Array.isArray(budgetPools) ? budgetPools : [],
+        expenseCategories:
+          Array.isArray(expenseCategories) && expenseCategories.length > 0
+            ? expenseCategories
+            : undefined,
       });
     }
 
@@ -456,10 +465,19 @@ function handleSyncProjects_(body) {
   const steps = Array.isArray(body.steps) ? body.steps : [];
   const hasBudgetPools = Array.isArray(body.budgetPools);
   const budgetPools = hasBudgetPools ? body.budgetPools : [];
+  const hasExpenseCategories =
+    Array.isArray(body.expenseCategories) && body.expenseCategories.length > 0;
 
   writeChunkedJsonList_(ss, RAW_PROJECTS_SHEET, rows);
   if (steps.length > 0) {
     writeChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET, steps);
+  }
+  if (hasExpenseCategories) {
+    writeChunkedSingleJson_(
+      ss,
+      RAW_EXPENSE_CATEGORIES_SHEET,
+      body.expenseCategories,
+    );
   }
   if (hasBudgetPools) {
     writeChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET, budgetPools);
@@ -475,6 +493,8 @@ function handleSyncProjects_(body) {
         'id',
         'ปีงบประมาณ',
         'รหัสหมวด',
+        'หมวดค่าใช้จ่าย',
+        'ประเภทย่อย',
         'ชื่อหมวดวงเงิน',
         'แหล่งงบประมาณ',
         'หน่วยงาน',
@@ -487,6 +507,8 @@ function handleSyncProjects_(body) {
         String(p.id || ''),
         Number(p.year || 0),
         String(p.code || ''),
+        String(p.expenseCategory || ''),
+        String(p.expenseSubCategory || ''),
         String(p.name || ''),
         String(p.fund || ''),
         String(p.department || ''),
@@ -511,6 +533,8 @@ function handleSyncProjects_(body) {
       'เลขทะเบียน',
       'ปีงบประมาณ',
       'ชื่อโครงการ',
+      'หมวดค่าใช้จ่าย',
+      'ประเภทย่อย',
       'สถานะ',
       'วิธีจัดซื้อจัดจ้าง',
       'งบประมาณ',
@@ -525,6 +549,8 @@ function handleSyncProjects_(body) {
       String(r.code || ''),
       Number(r.year || 0),
       String(r.title || ''),
+      String(r.expenseCategory || ''),
+      String(r.expenseSubCategory || ''),
       String(r.status || ''),
       String(r.method || ''),
       Number(r.budget || 0),

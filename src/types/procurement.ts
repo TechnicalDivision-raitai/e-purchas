@@ -145,11 +145,19 @@ export interface ProjectDetails {
   voucherNotes?: string;
 }
 
+export interface ExpenseCategoryGroup {
+  id: string;
+  name: string;
+  subCategories: string[];
+}
+
 export interface BudgetPool {
   id: string;
   year: number;
   code: string;
   name: string;
+  expenseCategory?: string;
+  expenseSubCategory?: string;
   fund: string;
   department: string;
   allocatedBudget: number;
@@ -166,6 +174,8 @@ export interface ProjectRecord {
   department: string;
   responsibleName: string;
   type: ProjectType;
+  expenseCategory?: string;
+  expenseSubCategory?: string;
   method: string;
   fund: string;
   budget: number;
@@ -196,6 +206,7 @@ export interface ProcurementState {
   steps: WorkflowStep[];
   rows: ProjectRecord[];
   budgetPools?: BudgetPool[];
+  expenseCategories?: ExpenseCategoryGroup[];
 }
 
 export type SortDirection = 'asc' | 'desc';
@@ -217,6 +228,8 @@ export type SortKey =
 export interface ViewFilter {
   year: string;
   status: string;
+  expenseCategory?: string;
+  expenseSubCategory?: string;
   q: string;
   sort: SortKey;
   dir: SortDirection;

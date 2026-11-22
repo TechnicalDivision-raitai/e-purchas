@@ -2,6 +2,7 @@ import { SARABAN_ALLOWED_CATEGORIES } from '../data/constants';
 import type {
   AttachmentCategory,
   BudgetPool,
+  ExpenseCategoryGroup,
   ProcurementState,
   ProjectRecord,
   SarabanDocCategory,
@@ -30,11 +31,13 @@ interface GoogleSheetPullResponse {
   rows?: ProjectRecord[];
   steps?: WorkflowStep[];
   budgetPools?: BudgetPool[];
+  expenseCategories?: ExpenseCategoryGroup[];
   data?: {
     rows?: ProjectRecord[];
     projects?: ProjectRecord[];
     steps?: WorkflowStep[];
     budgetPools?: BudgetPool[];
+    expenseCategories?: ExpenseCategoryGroup[];
   };
   error?: string;
   message?: string;
@@ -81,8 +84,15 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
 
   const steps = payload.steps || payload.data?.steps;
   const budgetPools = payload.budgetPools || payload.data?.budgetPools;
+  const expenseCategories =
+    payload.expenseCategories || payload.data?.expenseCategories;
 
-  if (!Array.isArray(rows) && !Array.isArray(steps) && !Array.isArray(budgetPools)) {
+  if (
+    !Array.isArray(rows) &&
+    !Array.isArray(steps) &&
+    !Array.isArray(budgetPools) &&
+    !Array.isArray(expenseCategories)
+  ) {
     return null;
   }
 
@@ -90,6 +100,9 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
     ...(Array.isArray(rows) ? { rows } : {}),
     ...(Array.isArray(steps) && steps.length > 0 ? { steps } : {}),
     ...(Array.isArray(budgetPools) ? { budgetPools } : {}),
+    ...(Array.isArray(expenseCategories) && expenseCategories.length > 0
+      ? { expenseCategories }
+      : {}),
   };
 }
 
@@ -123,6 +136,9 @@ export async function syncProjectsToGoogleSheet(
       rows: sanitizedRows,
       projects: sanitizedRows,
       budgetPools: state.budgetPools || [],
+      ...(Array.isArray(state.expenseCategories) && state.expenseCategories.length > 0
+        ? { expenseCategories: state.expenseCategories }
+        : {}),
       syncedAt: new Date().toISOString(),
     }),
   });

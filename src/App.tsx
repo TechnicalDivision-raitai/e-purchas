@@ -102,19 +102,23 @@ function WorkspaceShell() {
         />
 
         <main className="no-print mx-auto max-w-[1740px] px-4 py-6 sm:px-7 lg:px-9">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-[10px] font-semibold tracking-[0.14em] text-[#456892]">
-                PROCUREMENT MANAGEMENT
+          {page !== 'dashboard' && (
+            <>
+              <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-semibold tracking-[0.14em] text-[#456892]">
+                    PROCUREMENT MANAGEMENT
+                  </div>
+                  <h1 className="mt-1.5 text-[22px] font-semibold tracking-tight text-[#0f2a4a] sm:text-[25px]">
+                    {pageTitle}
+                  </h1>
+                  <p className="mt-1 text-xs text-[#4a6688]">{pageSubtitle}</p>
+                </div>
               </div>
-              <h1 className="mt-1.5 text-[22px] font-semibold tracking-tight text-[#0f2a4a] sm:text-[25px]">
-                {pageTitle}
-              </h1>
-              <p className="mt-1 text-xs text-[#4a6688]">{pageSubtitle}</p>
-            </div>
-          </div>
 
-          <Toolbar />
+              <Toolbar />
+            </>
+          )}
 
           {page === 'dashboard' && (
             <DashboardPage

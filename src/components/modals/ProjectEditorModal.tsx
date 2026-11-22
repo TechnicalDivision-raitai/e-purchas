@@ -5,6 +5,7 @@ import {
   Clock,
   FileText,
   FolderKanban,
+  FolderTree,
   PackageCheck,
   Save,
   ShoppingCart,
@@ -36,6 +37,11 @@ import {
   calculateBudgetPoolUsage,
   validateBudgetPool,
 } from '../../domain/budgetPools';
+import {
+  findParentCategoryForSubCategory,
+  getEffectiveExpenseCatalog,
+  getSubCategoriesForCategory,
+} from '../../domain/expenseCategories';
 import {
   buildPersonPositionMap,
   loadPersonPositionOverrides,
@@ -94,6 +100,7 @@ import {
   AutoSuggestInput,
   collectNormalizedSuggestions,
 } from '../common/AutoSuggestInput';
+import { ExpenseCategoriesModal } from './ExpenseCategoriesModal';
 
 interface ProjectEditorModalProps {
   projectId: string | null;
@@ -114,6 +121,8 @@ interface DraftState {
   year: number;
   code: string;
   type: ProjectType;
+  expenseCategory: string;
+  expenseSubCategory: string;
   title: string;
   method: string;
   fund: string;
@@ -143,6 +152,7 @@ function createDraftFromRecord(
   old: ProjectRecord | undefined,
   initialPool?: BudgetPool,
   existingRows: ProjectRecord[] = [],
+  allPools: BudgetPool[] = [],
 ): DraftState {
   const details = old?.projectDetails || {};
   const acceptance = createAcceptanceDraft(details);
@@ -151,12 +161,19 @@ function createDraftFromRecord(
     details.torMembers ?? [{ name: '', position: '', role: 'ประธานกรรมการ' }],
   );
   const resolvedPoolId = old?.budgetPoolId || initialPool?.id || '';
+  const linkedPool =
+    initialPool ||
+    (resolvedPoolId ? allPools.find((p) => p.id === resolvedPoolId) : undefined);
   const initialType: ProjectType = old ? old.type : 'ซื้อ';
 
   return {
     year: old ? old.year : initialPool ? initialPool.year : 2570,
     code: old ? old.code : generateNextProjectCode(existingRows, initialType),
     type: initialType,
+    expenseCategory:
+      old?.expenseCategory || linkedPool?.expenseCategory || '',
+    expenseSubCategory:
+      old?.expenseSubCategory || linkedPool?.expenseSubCategory || '',
     title: old ? old.title : '',
     method: old ? old.method : 'เฉพาะเจาะจง',
     fund: old ? old.fund : initialPool?.fund || '',
@@ -215,10 +232,12 @@ export function ProjectEditorModal({
 
   const rowsRef = useRef<ProjectRecord[]>(state.rows);
   rowsRef.current = state.rows;
+  const budgetPoolsRef = useRef<BudgetPool[]>(budgetPools);
+  budgetPoolsRef.current = budgetPools;
 
   const [activeTab, setActiveTab] = useState<ProjectTabId>(initialTab);
   const [draft, setDraft] = useState<DraftState>(() =>
-    createDraftFromRecord(existing, initialPool, state.rows),
+    createDraftFromRecord(existing, initialPool, state.rows, budgetPools),
   );
   const [formError, setFormError] = useState<string>('');
   const [uploadErrors, setUploadErrors] = useState<Record<AttachmentCategory, string>>({
@@ -234,6 +253,7 @@ export function ProjectEditorModal({
   const [quickPoolName, setQuickPoolName] = useState<string>('');
   const [quickPoolAmount, setQuickPoolAmount] = useState<string>('');
   const [quickPoolError, setQuickPoolError] = useState<string>('');
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState<boolean>(false);
   const [positionOverrides, setPositionOverrides] = useState<PersonPositionStore>(() =>
     loadPersonPositionOverrides(),
   );
@@ -245,7 +265,14 @@ export function ProjectEditorModal({
 
   useEffect(() => {
     setActiveTab(initialTab);
-    setDraft(createDraftFromRecord(existing, initialPool, rowsRef.current));
+    setDraft(
+      createDraftFromRecord(
+        existing,
+        initialPool,
+        rowsRef.current,
+        budgetPoolsRef.current,
+      ),
+    );
     setFormError('');
     setUploadErrors({ general: '', tor: '', order: '', acceptance: '', voucher: '' });
     setShowCancelPanel(
@@ -259,6 +286,26 @@ export function ProjectEditorModal({
     touchedPositionKeysRef.current.clear();
     codeManuallyEditedRef.current = Boolean(existing);
   }, [projectId, initialTab, existing, initialPool]);
+
+  const expenseCatalog = useMemo(
+    () =>
+      getEffectiveExpenseCatalog(
+        state.expenseCategories,
+        state.rows,
+        budgetPools,
+      ),
+    [state.expenseCategories, state.rows, budgetPools],
+  );
+
+  const mainCategorySuggestions = useMemo(
+    () => expenseCatalog.map((g) => g.name),
+    [expenseCatalog],
+  );
+
+  const subCategorySuggestions = useMemo(
+    () => getSubCategoriesForCategory(expenseCatalog, draft.expenseCategory),
+    [expenseCatalog, draft.expenseCategory],
+  );
 
   const selectedBudgetPool = useMemo(
     () =>
@@ -294,6 +341,8 @@ export function ProjectEditorModal({
       id: `pool-${uid()}`,
       year: Number(draft.year) || 2570,
       code: '',
+      expenseCategory: draft.expenseCategory.trim() || undefined,
+      expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
       name: quickPoolName.trim(),
       fund: draft.fund.trim() || 'งบประมาณรายจ่าย',
       department: existing?.department || DEFAULT_DEPARTMENT,
@@ -625,6 +674,8 @@ export function ProjectEditorModal({
         year: Number(draft.year) || 2570,
         code: draft.code.trim(),
         type: draft.type,
+        expenseCategory: draft.expenseCategory.trim() || undefined,
+        expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
         title: draft.title.trim(),
         method: draft.method.trim(),
         fund: draft.fund.trim(),
@@ -699,6 +750,8 @@ export function ProjectEditorModal({
               'year',
               'code',
               'type',
+              'expenseCategory',
+              'expenseSubCategory',
               'title',
               'method',
               'fund',
@@ -1429,6 +1482,124 @@ export function ProjectEditorModal({
                       />
                     </label>
 
+                    <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#f4f8fe] p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#153e6e]">
+                          <FolderTree className="h-3.5 w-3.5 text-[#1455b3]" />
+                          หมวดค่าใช้จ่ายและประเภทย่อย
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCategoryManagerOpen(true)}
+                          className="text-[11px] font-semibold text-[#1355b0] hover:underline"
+                        >
+                          จัดการหมวด / เพิ่มประเภทย่อย
+                        </button>
+                      </div>
+
+                      <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                          หมวดค่าใช้จ่าย
+                          <div className="mt-1.5">
+                            <AutoSuggestInput
+                              maxLength={120}
+                              placeholder="เช่น ค่าวัสดุ, ค่าครุภัณฑ์, ค่าใช้สอย"
+                              value={draft.expenseCategory}
+                              suggestions={mainCategorySuggestions}
+                              onChangeValue={(nextCat) =>
+                                setDraft((p) => {
+                                  const validSubs = getSubCategoriesForCategory(
+                                    expenseCatalog,
+                                    nextCat,
+                                  );
+                                  const keepSub =
+                                    !nextCat.trim() ||
+                                    validSubs.length === 0 ||
+                                    validSubs.some(
+                                      (s) =>
+                                        s.toLowerCase() ===
+                                        p.expenseSubCategory
+                                          .trim()
+                                          .toLowerCase(),
+                                    );
+                                  return {
+                                    ...p,
+                                    expenseCategory: nextCat,
+                                    expenseSubCategory: keepSub
+                                      ? p.expenseSubCategory
+                                      : '',
+                                  };
+                                })
+                              }
+                              className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                          ประเภทย่อย
+                          <div className="mt-1.5">
+                            <AutoSuggestInput
+                              maxLength={150}
+                              placeholder={
+                                draft.expenseCategory
+                                  ? `เลือกประเภทย่อยในหมวด ${draft.expenseCategory}`
+                                  : 'เช่น วัสดุไฟฟ้าและวิทยุ, ครุภัณฑ์สำนักงาน'
+                              }
+                              value={draft.expenseSubCategory}
+                              suggestions={subCategorySuggestions}
+                              onChangeValue={(nextSub) =>
+                                setDraft((p) => {
+                                  const inferredParent =
+                                    !p.expenseCategory.trim() && nextSub.trim()
+                                      ? findParentCategoryForSubCategory(
+                                          expenseCatalog,
+                                          nextSub,
+                                        )
+                                      : null;
+                                  return {
+                                    ...p,
+                                    expenseCategory:
+                                      inferredParent || p.expenseCategory,
+                                    expenseSubCategory: nextSub,
+                                  };
+                                })
+                              }
+                              className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                            />
+                          </div>
+                        </label>
+                      </div>
+
+                      {draft.expenseCategory.trim() &&
+                        subCategorySuggestions.length > 0 && (
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10.5px] font-medium text-[#4a688a]">
+                              เลือกด่วน:
+                            </span>
+                            {subCategorySuggestions.slice(0, 8).map((sub) => (
+                              <button
+                                key={sub}
+                                type="button"
+                                onClick={() =>
+                                  setDraft((p) => ({
+                                    ...p,
+                                    expenseSubCategory: sub,
+                                  }))
+                                }
+                                className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition ${
+                                  draft.expenseSubCategory === sub
+                                    ? 'border-[#1251a8] bg-[#dbeafd] font-semibold text-[#0d3e85]'
+                                    : 'border-[#c5daf0] bg-white text-[#2f5178] hover:bg-[#edf4fc]'
+                                }`}
+                              >
+                                {sub}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+
                     <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#eef5fd] p-3.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#153e6e]">
@@ -1475,14 +1646,27 @@ export function ProjectEditorModal({
                                 matchingYearPool || budgetPools[0];
                               const nextPoolId =
                                 p.budgetPoolId || fallbackPool?.id || '';
+                              const targetPool =
+                                budgetPools.find((bp) => bp.id === nextPoolId) ||
+                                fallbackPool;
                               return {
                                 ...p,
                                 budgetMode: 'pool',
                                 budgetPoolId: nextPoolId,
                                 fund:
-                                  p.fund.trim() || !fallbackPool?.fund
+                                  p.fund.trim() || !targetPool?.fund
                                     ? p.fund
-                                    : fallbackPool.fund,
+                                    : targetPool.fund,
+                                expenseCategory:
+                                  p.expenseCategory.trim() ||
+                                  !targetPool?.expenseCategory
+                                    ? p.expenseCategory
+                                    : targetPool.expenseCategory,
+                                expenseSubCategory:
+                                  p.expenseSubCategory.trim() ||
+                                  !targetPool?.expenseSubCategory
+                                    ? p.expenseSubCategory
+                                    : targetPool.expenseSubCategory,
                               };
                             })
                           }
@@ -1520,6 +1704,12 @@ export function ProjectEditorModal({
                                       chosen?.fund && !p.fund.trim()
                                         ? chosen.fund
                                         : p.fund,
+                                    expenseCategory:
+                                      chosen?.expenseCategory ||
+                                      p.expenseCategory,
+                                    expenseSubCategory:
+                                      chosen?.expenseSubCategory ||
+                                      p.expenseSubCategory,
                                   }));
                                 }}
                                 className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
@@ -3353,6 +3543,10 @@ export function ProjectEditorModal({
           </div>
         </form>
       </div>
+      <ExpenseCategoriesModal
+        open={categoryManagerOpen}
+        onClose={() => setCategoryManagerOpen(false)}
+      />
     </div>
   );
 }

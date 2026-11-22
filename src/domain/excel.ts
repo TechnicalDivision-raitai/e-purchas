@@ -55,6 +55,8 @@ export const EXCEL_SCHEMA: Record<string, string[]> = {
     'รายละเอียดโครงการ',
     'สถานะ',
     'ขั้นตอน',
+    'หมวดค่าใช้จ่าย',
+    'ประเภทย่อย',
   ],
   'TORและราคากลาง': [
     'รหัสโครงการ',
@@ -151,6 +153,8 @@ export function buildExcelTables(
       [
         'ปีงบประมาณ',
         'รหัสหมวด',
+        'หมวดค่าใช้จ่าย',
+        'ประเภทย่อย',
         'ชื่อหมวดวงเงิน',
         'แหล่งงบประมาณ',
         'หน่วยงาน',
@@ -176,6 +180,8 @@ export function buildExcelTables(
       tables['BUDGET DATA'].push([
         Number(pool.year),
         pool.code || '',
+        pool.expenseCategory || '',
+        pool.expenseSubCategory || '',
         pool.name,
         pool.fund || '',
         pool.department || '',
@@ -206,6 +212,8 @@ export function buildExcelTables(
       r.notes,
       r.status,
       r.step,
+      r.expenseCategory || '',
+      r.expenseSubCategory || '',
     ]);
 
     tables['TORและราคากลาง'].push([
@@ -406,18 +414,26 @@ export function previewExcelImport(
       continue;
     }
 
+    if (sheetName === 'BUDGET DATA') {
+      continue;
+    }
+
     if (!EXCEL_SCHEMA[sheetName]) {
       throw new Error(`ไม่รองรับชีต ${sheetName}`);
     }
 
     const expectedHeaders = EXCEL_SCHEMA[sheetName];
-    const legacyOrderHeaders =
-      sheetName === 'สั่งซื้อสั่งจ้าง' ? expectedHeaders.slice(0, 7) : null;
+    const legacyHeaders =
+      sheetName === 'สั่งซื้อสั่งจ้าง'
+        ? expectedHeaders.slice(0, 7)
+        : sheetName === 'ข้อมูลทั่วไป'
+          ? expectedHeaders.slice(0, 12)
+          : null;
     const headerMatches =
       Array.isArray(matrix) &&
       (JSON.stringify(matrix[0]) === JSON.stringify(expectedHeaders) ||
-        (legacyOrderHeaders &&
-          JSON.stringify(matrix[0]) === JSON.stringify(legacyOrderHeaders)));
+        (legacyHeaders &&
+          JSON.stringify(matrix[0]) === JSON.stringify(legacyHeaders)));
 
     if (!headerMatches) {
       throw new Error(`หัวคอลัมน์ชีต ${sheetName} ไม่ตรงกับแม่แบบ`);
@@ -488,6 +504,9 @@ export function previewExcelImport(
       notes: String(a[9] || ''),
       status: (a[10] || existingRecord?.status || 'รอจัดทำTOR และราคากลาง') as ProjectStatus,
       step: normalizeLegacyStepId(String(a[11] || existingRecord?.step || steps[0].id)),
+      expenseCategory: String(a[12] ?? existingRecord?.expenseCategory ?? '').trim() || undefined,
+      expenseSubCategory:
+        String(a[13] ?? existingRecord?.expenseSubCategory ?? '').trim() || undefined,
       department: existingRecord?.department || DEFAULT_DEPARTMENT,
       assignee: existingRecord?.assignee || userId,
       reference: 0,

@@ -134,7 +134,15 @@ export function calculateBudgetPoolUsageList(
     .filter((p) => {
       if (fiscalYear && Number(p.year) !== Number(fiscalYear)) return false;
       if (q) {
-        const hay = [p.code, p.name, p.fund, p.department, p.notes]
+        const hay = [
+          p.code,
+          p.name,
+          p.expenseCategory,
+          p.expenseSubCategory,
+          p.fund,
+          p.department,
+          p.notes,
+        ]
           .map((v) => String(v || '').toLowerCase())
           .join(' ');
         if (!hay.includes(q)) return false;
@@ -192,7 +200,15 @@ export function calculateCombinedFinancialOverview(
     if (fiscalYear && Number(p.year) !== Number(fiscalYear)) return false;
     if (!q) return true;
     if (linkedPoolIdsInFiltered.has(p.id)) return true;
-    const hay = [p.code, p.name, p.fund, p.department, p.notes]
+    const hay = [
+      p.code,
+      p.name,
+      p.expenseCategory,
+      p.expenseSubCategory,
+      p.fund,
+      p.department,
+      p.notes,
+    ]
       .map((v) => String(v || '').toLowerCase())
       .join(' ');
     return hay.includes(q);

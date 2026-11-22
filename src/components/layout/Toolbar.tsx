@@ -1,11 +1,37 @@
 import { RefreshCw, Search } from 'lucide-react';
+import { useMemo } from 'react';
 import { STATUSES } from '../../data/constants';
+import {
+  getEffectiveExpenseCatalog,
+  getSubCategoriesForCategory,
+  UNSPECIFIED_EXPENSE_CATEGORY,
+} from '../../domain/expenseCategories';
 import { useProcurement } from '../../storage/useProcurementStore';
 import { currentFiscalYear } from '../../utils/date';
 
 export function Toolbar() {
   const { state, page, inboxTab, viewFilter, updateViewFilter, refreshFromStorage } =
     useProcurement();
+
+  const expenseCatalog = useMemo(
+    () =>
+      getEffectiveExpenseCatalog(
+        state.expenseCategories,
+        state.rows,
+        state.budgetPools || [],
+      ),
+    [state.expenseCategories, state.rows, state.budgetPools],
+  );
+
+  const selectedCategory = viewFilter.expenseCategory || '';
+  const selectedSubCategory = viewFilter.expenseSubCategory || '';
+
+  const subCategoryOptions = useMemo(() => {
+    if (!selectedCategory || selectedCategory === UNSPECIFIED_EXPENSE_CATEGORY) {
+      return [];
+    }
+    return getSubCategoriesForCategory(expenseCatalog, selectedCategory);
+  }, [expenseCatalog, selectedCategory]);
 
   if (
     page === 'excel' ||
@@ -37,7 +63,7 @@ export function Toolbar() {
           <select
             value={viewFilter.year}
             onChange={(e) => updateViewFilter({ year: e.target.value })}
-            className="mt-1.5 block min-h-[38px] min-w-[160px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
+            className="mt-1.5 block min-h-[38px] min-w-[150px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
           >
             <option value="">ทุกปีงบประมาณ</option>
             {years.map((y) => (
@@ -49,24 +75,70 @@ export function Toolbar() {
         </label>
 
         {page !== 'budgets' && (
-          <label className="block text-[11px] font-semibold text-[#2c4b70]">
-            สถานะ
-            <select
-              value={viewFilter.status}
-              onChange={(e) => updateViewFilter({ status: e.target.value })}
-              className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
-            >
-              <option value="">ทุกสถานะ</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+          <>
+            <label className="block text-[11px] font-semibold text-[#2c4b70]">
+              หมวดค่าใช้จ่าย
+              <select
+                value={selectedCategory}
+                onChange={(e) =>
+                  updateViewFilter({
+                    expenseCategory: e.target.value,
+                    expenseSubCategory: '',
+                  })
+                }
+                className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
+              >
+                <option value="">ทุกหมวดค่าใช้จ่าย</option>
+                {expenseCatalog.map((group) => (
+                  <option key={group.id} value={group.name}>
+                    {group.name}
+                  </option>
+                ))}
+                <option value={UNSPECIFIED_EXPENSE_CATEGORY}>
+                  {UNSPECIFIED_EXPENSE_CATEGORY}
                 </option>
-              ))}
-            </select>
-          </label>
+              </select>
+            </label>
+
+            {subCategoryOptions.length > 0 && (
+              <label className="block text-[11px] font-semibold text-[#2c4b70]">
+                ประเภทย่อย
+                <select
+                  value={selectedSubCategory}
+                  onChange={(e) =>
+                    updateViewFilter({ expenseSubCategory: e.target.value })
+                  }
+                  className="mt-1.5 block min-h-[38px] min-w-[165px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
+                >
+                  <option value="">ทุกประเภทย่อย</option>
+                  {subCategoryOptions.map((sub) => (
+                    <option key={sub} value={sub}>
+                      {sub}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <label className="block text-[11px] font-semibold text-[#2c4b70]">
+              สถานะ
+              <select
+                value={viewFilter.status}
+                onChange={(e) => updateViewFilter({ status: e.target.value })}
+                className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
+              >
+                <option value="">ทุกสถานะ</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         )}
 
-        <label className="block min-w-[220px] flex-1 max-w-[430px] text-[11px] font-semibold text-[#2c4b70]">
+        <label className="block min-w-[200px] flex-1 max-w-[380px] text-[11px] font-semibold text-[#2c4b70]">
           ค้นหา
           <div className="relative mt-1.5">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-[#5c7c9e]" />
@@ -76,8 +148,8 @@ export function Toolbar() {
               onChange={(e) => updateViewFilter({ q: e.target.value })}
               placeholder={
                 page === 'budgets'
-                  ? 'ค้นหาชื่อหมวดวงเงิน รหัสหมวด หรือแหล่งงบประมาณ…'
-                  : 'ค้นหาเลขทะเบียน ชื่อโครงการ หรือหน่วยงาน…'
+                  ? 'ค้นหาชื่อหมวดวงเงิน หมวดค่าใช้จ่าย ประเภทย่อย…'
+                  : 'ค้นหาเลขทะเบียน ชื่อโครงการ หมวดค่าใช้จ่าย หรือประเภทย่อย…'
               }
               className="block min-h-[38px] w-full rounded-md border border-[#b6cde6] bg-white py-1.5 pr-3 pl-8 text-xs text-[#173659] placeholder:text-[#7690ad] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
             />

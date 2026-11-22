@@ -1,18 +1,31 @@
-import { Plus, Wallet } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  ChevronRight,
+  FolderTree,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { STATUSES } from '../../data/constants';
 import {
   calculateBudgetPoolUsageList,
   calculateCombinedFinancialOverview,
 } from '../../domain/budgetPools';
 import {
-  getResponsibleName,
-  getStepName,
-  isActiveProject,
-  isOverdueProject,
-} from '../../domain/procurement';
+  buildExpenseHierarchySummary,
+  formatExpenseClassification,
+  getEffectiveExpenseCatalog,
+  resolveProjectExpenseClassification,
+  UNSPECIFIED_EXPENSE_CATEGORY,
+  UNSPECIFIED_EXPENSE_SUBCATEGORY,
+} from '../../domain/expenseCategories';
+import { getStepName } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
 import type { ProjectRecord, ProjectStatus } from '../../types/procurement';
+import { currentFiscalYear } from '../../utils/date';
 import { formatMoney } from '../../utils/format';
+import { ExpenseCategoriesModal } from '../modals/ExpenseCategoriesModal';
 
 interface DashboardPageProps {
   onViewProject: (id: string) => void;
@@ -21,80 +34,62 @@ interface DashboardPageProps {
   onCreatePurchaseFromPool: (poolId: string) => void;
 }
 
-interface StatusChartMeta {
-  status: ProjectStatus;
+interface StatusBucket {
+  id: string;
   label: string;
   color: string;
-  badgeClass: string;
+  statuses: ProjectStatus[];
 }
 
-const STATUS_CHART_CONFIG: StatusChartMeta[] = [
+const STATUS_BUCKETS: StatusBucket[] = [
   {
-    status: 'เสร็จสิ้น',
+    id: 'prepare',
+    label: 'รอ TOR / รออนุมัติ',
+    color: '#f59e0b',
+    statuses: ['รอจัดทำTOR และราคากลาง', 'รอดำเนินการ', 'รออนุมัติ'],
+  },
+  {
+    id: 'in_progress',
+    label: 'อยู่ระหว่างดำเนินการ',
+    color: '#10b981',
+    statuses: ['อยู่ระหว่างสั่งซื้อสั่งจ้าง', 'กำลังดำเนินการ'],
+  },
+  {
+    id: 'completed',
     label: 'เสร็จสิ้น',
-    color: '#0ea38e',
-    badgeClass: 'bg-[#0ea38e] text-white',
+    color: '#2563eb',
+    statuses: ['เสร็จสิ้น'],
   },
   {
-    status: 'อยู่ระหว่างสั่งซื้อสั่งจ้าง',
-    label: 'อยู่ระหว่างสั่งซื้อสั่งจ้าง',
-    color: '#53a8f6',
-    badgeClass: 'bg-[#4da3f5] text-white',
-  },
-  {
-    status: 'กำลังดำเนินการ',
-    label: 'กำลังดำเนินการ',
-    color: '#2d8ee8',
-    badgeClass: 'bg-[#2d8ee8] text-white',
-  },
-  {
-    status: 'รออนุมัติ',
-    label: 'รออนุมัติ',
-    color: '#f5b731',
-    badgeClass: 'bg-[#f5b731] text-[#2b1f00]',
-  },
-  {
-    status: 'รอจัดทำTOR และราคากลาง',
-    label: 'รอจัดทำ TOR และราคากลาง',
-    color: '#63dfc6',
-    badgeClass: 'bg-[#d4f3ec] text-[#0b6659]',
-  },
-  {
-    status: 'ส่งกลับแก้ไข',
+    id: 'revision',
     label: 'ส่งกลับแก้ไข',
-    color: '#ee6b6b',
-    badgeClass: 'bg-[#fde2e2] text-[#a32626]',
+    color: '#e11d48',
+    statuses: ['ส่งกลับแก้ไข'],
   },
   {
-    status: 'พักงาน',
-    label: 'พักงาน',
+    id: 'paused',
+    label: 'พักงาน / ยกเลิก',
     color: '#94a3b8',
-    badgeClass: 'bg-[#e6edf4] text-[#455a70]',
+    statuses: ['พักงาน', 'ยกเลิก'],
   },
-  {
-    status: 'ยกเลิก',
-    label: 'ยกเลิก',
-    color: '#cbd5e1',
-    badgeClass: 'bg-[#eceff4] text-[#55606e]',
-  },
-  {
-    status: 'รอดำเนินการ',
-    label: 'รอดำเนินการ',
-    color: '#7dd3fc',
-    badgeClass: 'bg-[#e0f2fe] text-[#0c5a8a]',
-  },
-];
-
-const EMPTY_LEGEND_STATUSES: ProjectStatus[] = [
-  'เสร็จสิ้น',
-  'อยู่ระหว่างสั่งซื้อสั่งจ้าง',
-  'รออนุมัติ',
-  'รอจัดทำTOR และราคากลาง',
 ];
 
 function getStatusBadgeClass(status: string): string {
-  const found = STATUS_CHART_CONFIG.find((c) => c.status === status);
-  return found ? found.badgeClass : 'bg-[#d4f3ec] text-[#0b6659]';
+  switch (status) {
+    case 'เสร็จสิ้น':
+      return 'bg-[#dbeafe] text-[#1d4ed8] border border-[#bfdbfe]';
+    case 'อยู่ระหว่างสั่งซื้อสั่งจ้าง':
+    case 'กำลังดำเนินการ':
+      return 'bg-[#d1fae5] text-[#047857] border border-[#a7f3d0]';
+    case 'รออนุมัติ':
+    case 'รอจัดทำTOR และราคากลาง':
+    case 'รอดำเนินการ':
+      return 'bg-[#fef3c7] text-[#b45309] border border-[#fde68a]';
+    case 'ส่งกลับแก้ไข':
+      return 'bg-[#ffe4e6] text-[#be123c] border border-[#fecdd3]';
+    default:
+      return 'bg-[#f1f5f9] text-[#475569] border border-[#cbd5e1]';
+  }
 }
 
 function getProjectProgressPercent(
@@ -122,831 +117,1283 @@ export function DashboardPage({
   onCreateProject,
   onCreatePurchaseFromPool,
 }: DashboardPageProps) {
-  const { state, user, viewFilter, filteredRows, navigate, updateViewFilter } =
-    useProcurement();
-  const [hoveredStatus, setHoveredStatus] = useState<string | null>(null);
+  const {
+    state,
+    user,
+    viewFilter,
+    filteredRows,
+    navigate,
+    updateViewFilter,
+    refreshFromStorage,
+  } = useProcurement();
+
+  const [fundScope, setFundScope] = useState<string>('');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('');
+  const [hoveredBucketId, setHoveredBucketId] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<
+    Record<string, boolean>
+  >({});
+  const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
+
   const isAdmin = user.role === 'admin';
   const budgetPools = state.budgetPools || [];
-
-  const activeRows = filteredRows.filter(isActiveProject);
-  const pendingApprovalRows = filteredRows.filter(
-    (r) => r.status === 'รออนุมัติ',
-  );
-  const completedRows = filteredRows.filter((r) => r.status === 'เสร็จสิ้น');
-  const lateRows = filteredRows.filter((r) => isOverdueProject(r));
-
-  const overview = calculateCombinedFinancialOverview(
-    filteredRows,
-    state.rows,
-    budgetPools,
-    viewFilter.year,
-    viewFilter.q,
-  );
-  const poolUsages = calculateBudgetPoolUsageList(
-    budgetPools,
-    state.rows,
-    viewFilter.year,
-    viewFilter.q,
+  const poolById = useMemo(
+    () => new Map(budgetPools.map((p) => [p.id, p])),
+    [budgetPools],
   );
 
-  const agreedRatio = overview.totalBudget
-    ? Math.min(100, (overview.totalAgreed / overview.totalBudget) * 100)
-    : 0;
-  const reservedRatio = overview.totalBudget
-    ? Math.min(
-        Math.max(0, 100 - agreedRatio),
-        (overview.totalReserved / overview.totalBudget) * 100,
-      )
-    : 0;
-  const committedPct = overview.totalBudget
-    ? (overview.totalCommitted / overview.totalBudget) * 100
-    : 0;
+  const expenseCatalog = useMemo(
+    () =>
+      getEffectiveExpenseCatalog(
+        state.expenseCategories,
+        state.rows,
+        budgetPools,
+      ),
+    [state.expenseCategories, state.rows, budgetPools],
+  );
 
-  const latestRows = filteredRows.slice(0, 5);
+  // Available fiscal years for filter dropdown
+  const availableYears = useMemo(() => {
+    return [
+      ...new Set([
+        currentFiscalYear(),
+        ...state.rows.map((r) => Number(r.year)),
+        ...budgetPools.map((p) => Number(p.year)),
+        ...(viewFilter.year ? [Number(viewFilter.year)] : []),
+      ]),
+    ]
+      .filter((y) => Number.isFinite(y) && y > 0)
+      .sort((a, b) => b - a);
+  }, [state.rows, budgetPools, viewFilter.year]);
 
-  const statusChartSegments = useMemo(() => {
-    const total = filteredRows.length;
-    const counts = new Map<string, number>();
-    for (const r of filteredRows) {
-      counts.set(r.status, (counts.get(r.status) || 0) + 1);
-    }
+  // Distinct funding sources for dropdown
+  const fundSources = useMemo(() => {
+    return [
+      ...new Set([
+        ...state.rows.map((r) => String(r.fund || '').trim()),
+        ...budgetPools.map((p) => String(p.fund || '').trim()),
+      ]),
+    ].filter(Boolean);
+  }, [state.rows, budgetPools]);
 
-    if (total === 0) {
-      return EMPTY_LEGEND_STATUSES.map((status) => {
-        const meta = STATUS_CHART_CONFIG.find((c) => c.status === status)!;
-        return {
-          status: meta.status,
-          label: meta.label,
-          color: meta.color,
-          count: 0,
-          pct: 0,
-        };
+  // Apply local funding/mode and expense category filter on top of global filteredRows
+  const dashboardRows = useMemo(() => {
+    return filteredRows.filter((r) => {
+      if (fundScope === '__STANDALONE__' && r.budgetPoolId) return false;
+      if (fundScope === '__BUDGET_DATA__' && !r.budgetPoolId) return false;
+      if (
+        fundScope &&
+        fundScope !== '__STANDALONE__' &&
+        fundScope !== '__BUDGET_DATA__' &&
+        String(r.fund || '').trim() !== fundScope
+      ) {
+        return false;
+      }
+      if (expenseCategoryFilter) {
+        const { category } = resolveProjectExpenseClassification(r, poolById);
+        const effectiveCat = category || UNSPECIFIED_EXPENSE_CATEGORY;
+        if (effectiveCat !== expenseCategoryFilter) return false;
+      }
+      return true;
+    });
+  }, [filteredRows, fundScope, expenseCategoryFilter, poolById]);
+
+  const scopedBudgetPools = useMemo(() => {
+    return budgetPools.filter((p) => {
+      if (fundScope === '__STANDALONE__') return false;
+      if (
+        fundScope &&
+        fundScope !== '__BUDGET_DATA__' &&
+        String(p.fund || '').trim() !== fundScope
+      ) {
+        return false;
+      }
+      if (expenseCategoryFilter) {
+        const effectiveCat =
+          String(p.expenseCategory || '').trim() || UNSPECIFIED_EXPENSE_CATEGORY;
+        if (effectiveCat !== expenseCategoryFilter) return false;
+      }
+      return true;
+    });
+  }, [budgetPools, fundScope, expenseCategoryFilter]);
+
+  const overview = useMemo(
+    () =>
+      calculateCombinedFinancialOverview(
+        dashboardRows,
+        state.rows,
+        scopedBudgetPools,
+        viewFilter.year,
+        viewFilter.q,
+      ),
+    [dashboardRows, state.rows, scopedBudgetPools, viewFilter.year, viewFilter.q],
+  );
+
+  const poolUsages = useMemo(
+    () =>
+      calculateBudgetPoolUsageList(
+        scopedBudgetPools,
+        state.rows,
+        viewFilter.year,
+        viewFilter.q,
+      ),
+    [scopedBudgetPools, state.rows, viewFilter.year, viewFilter.q],
+  );
+
+  const expenseHierarchy = useMemo(
+    () => buildExpenseHierarchySummary(dashboardRows, poolUsages, budgetPools),
+    [dashboardRows, poolUsages, budgetPools],
+  );
+
+  const totalSubCategoryCount = useMemo(
+    () =>
+      expenseHierarchy.reduce((sum, cat) => sum + cat.subCategories.length, 0),
+    [expenseHierarchy],
+  );
+
+  // Card 1: Status proportion buckets (mutually exclusive, always sum to 100%)
+  const statusSegments = useMemo(() => {
+    const total = dashboardRows.length;
+    const assignedIds = new Set<string>();
+
+    const list = STATUS_BUCKETS.map((bucket) => {
+      const matched = dashboardRows.filter((r) => {
+        if (bucket.statuses.includes(r.status)) {
+          assignedIds.add(r.id);
+          return true;
+        }
+        return false;
       });
+      const count = matched.length;
+      return {
+        ...bucket,
+        count,
+        pct: total > 0 ? (count / total) * 100 : 0,
+      };
+    });
+
+    // Catch any unexpected custom status into "prepare" bucket
+    const unmatched = dashboardRows.filter((r) => !assignedIds.has(r.id));
+    if (unmatched.length > 0 && list[0]) {
+      list[0].count += unmatched.length;
+      list[0].pct = total > 0 ? (list[0].count / total) * 100 : 0;
     }
 
-    const segments: Array<{
-      status: string;
+    return list;
+  }, [dashboardRows]);
+
+  // Card 2: Sub-category spending comparison (agreed + reserved) from expenseHierarchy
+  const subCategoryComparison = useMemo(() => {
+    const items: Array<{
+      key: string;
       label: string;
-      color: string;
+      categoryName: string;
+      subName: string;
+      isUnspecified: boolean;
+      budget: number;
+      agreed: number;
+      reserved: number;
+      spent: number;
       count: number;
-      pct: number;
     }> = [];
 
-    for (const cfg of STATUS_CHART_CONFIG) {
-      const count = counts.get(cfg.status) || 0;
-      if (count > 0) {
-        segments.push({
-          status: cfg.status,
-          label: cfg.label,
-          color: cfg.color,
-          count,
-          pct: (count / total) * 100,
+    for (const cat of expenseHierarchy) {
+      for (const sub of cat.subCategories) {
+        const isUnspecified =
+          cat.isUnspecified && sub.name === UNSPECIFIED_EXPENSE_SUBCATEGORY;
+        const label = isUnspecified
+          ? 'ยังไม่ระบุประเภทย่อย'
+          : sub.name === UNSPECIFIED_EXPENSE_SUBCATEGORY
+            ? `${cat.name} (ไม่ระบุย่อย)`
+            : sub.name;
+        const spent = sub.agreed + sub.reserved;
+        items.push({
+          key: `${cat.name}::${sub.name}`,
+          label,
+          categoryName: cat.name,
+          subName: sub.name,
+          isUnspecified,
+          budget: sub.budget,
+          agreed: sub.agreed,
+          reserved: sub.reserved,
+          spent,
+          count: sub.projectCount > 0 ? sub.projectCount : sub.poolCount,
         });
-        counts.delete(cfg.status);
       }
     }
 
-    for (const [status, count] of counts.entries()) {
-      if (count > 0) {
-        segments.push({
-          status,
-          label: status,
-          color: '#64748b',
-          count,
-          pct: (count / total) * 100,
-        });
-      }
+    items.sort((a, b) => {
+      if (a.isUnspecified !== b.isUnspecified) return a.isUnspecified ? 1 : -1;
+      if (b.spent !== a.spent) return b.spent - a.spent;
+      if (b.budget !== a.budget) return b.budget - a.budget;
+      return a.label.localeCompare(b.label, 'th');
+    });
+
+    const totalSpent = items.reduce((s, x) => s + x.spent, 0);
+    const maxSpent = items.reduce((m, x) => Math.max(m, x.spent), 0);
+
+    const MAX_VISIBLE = 5;
+    if (items.length <= MAX_VISIBLE) {
+      return {
+        rows: items,
+        totalSpent,
+        maxSpent,
+        totalCount: items.length,
+      };
     }
 
-    return segments;
-  }, [filteredRows]);
+    const head = items.slice(0, MAX_VISIBLE - 1);
+    const rest = items.slice(MAX_VISIBLE - 1);
+    const otherBudget = rest.reduce((s, x) => s + x.budget, 0);
+    const otherAgreed = rest.reduce((s, x) => s + x.agreed, 0);
+    const otherReserved = rest.reduce((s, x) => s + x.reserved, 0);
+    const otherSpent = otherAgreed + otherReserved;
+    const otherCount = rest.reduce((s, x) => s + x.count, 0);
 
-  const activeHoveredSegment = hoveredStatus
-    ? statusChartSegments.find((s) => s.status === hoveredStatus) || null
+    return {
+      rows: [
+        ...head,
+        {
+          key: '__OTHER_SUBS__',
+          label: `ประเภทย่อยอื่น ๆ (${rest.length} ประเภท)`,
+          categoryName: '',
+          subName: '',
+          isUnspecified: true,
+          budget: otherBudget,
+          agreed: otherAgreed,
+          reserved: otherReserved,
+          spent: otherSpent,
+          count: otherCount,
+        },
+      ],
+      totalSpent,
+      maxSpent: Math.max(maxSpent, otherSpent),
+      totalCount: items.length,
+    };
+  }, [expenseHierarchy]);
+
+  // Card 3: Budget percentages
+  const agreedPct = overview.totalBudget
+    ? Math.min(100, (overview.totalAgreed / overview.totalBudget) * 100)
+    : 0;
+  const voucherPct = overview.totalBudget
+    ? Math.min(100, (overview.totalVoucher / overview.totalBudget) * 100)
+    : 0;
+
+  const latestRows = dashboardRows.slice(0, 5);
+  const activeHoveredBucket = hoveredBucketId
+    ? statusSegments.find((s) => s.id === hoveredBucketId) || null
     : null;
 
-  const donutRadius = 64;
+  const donutRadius = 52;
   const donutCircumference = 2 * Math.PI * donutRadius;
 
-  const kpiCards = [
-    {
-      label: 'โครงการทั้งหมด',
-      value: `${filteredRows.length}`,
-      unit: 'รายการ',
-      subtext: `เสร็จสิ้น ${completedRows.length} · เกินกำหนด ${lateRows.length}`,
-      surfaceClass: 'bg-[#ebf7f6] border-[#d3ebe8] hover:border-[#9cd6cf]',
-      valueClass: 'text-[#0c9583]',
-      onClick: () => {
-        updateViewFilter({ status: '' });
-        navigate('register');
-      },
-    },
-    {
-      label: 'อยู่ระหว่างดำเนินการ',
-      value: `${activeRows.length}`,
-      unit: 'รายการ',
-      subtext: 'กำลังดำเนินงาน · ไม่รวมเสร็จสิ้นและยกเลิก',
-      surfaceClass: 'bg-[#ebf7f6] border-[#d3ebe8] hover:border-[#9cd6cf]',
-      valueClass: 'text-[#0c9583]',
-      onClick: () => navigate('inbox'),
-    },
-    {
-      label: 'รออนุมัติ',
-      value: `${pendingApprovalRows.length}`,
-      unit: 'รายการ',
-      subtext:
-        lateRows.length > 0
-          ? `เกินกำหนด ${lateRows.length} รายการ`
-          : 'โครงการที่อยู่ระหว่างรอพิจารณาอนุมัติ',
-      surfaceClass: 'bg-[#eaf3fc] border-[#cfe2f7] hover:border-[#99c2ee]',
-      valueClass: 'text-[#0c9583]',
-      onClick: () => {
-        updateViewFilter({ status: 'รออนุมัติ' });
-        navigate('register');
-      },
-    },
-    {
-      label: 'งบประมาณคงเหลือ',
-      value: `฿ ${formatMoney(overview.totalRemaining)}`,
-      unit: '',
-      subtext: `จากงบประมาณรวม ฿ ${formatMoney(overview.totalBudget)}`,
-      surfaceClass: 'bg-[#ebf7f6] border-[#d3ebe8] hover:border-[#9cd6cf]',
-      valueClass:
-        overview.totalRemaining < 0 ? 'text-[#b52c2c]' : 'text-[#0c9583]',
-      onClick: () => navigate('budgets'),
-    },
-  ];
-
-  const miniBreakdowns = [
-    {
-      title: 'ประเภทงาน',
-      getValue: (r: (typeof filteredRows)[number]) => r.type,
-    },
-    {
-      title: 'วิธีจัดซื้อจัดจ้าง',
-      getValue: (r: (typeof filteredRows)[number]) => r.method,
-    },
-    {
-      title: 'ผู้รับผิดชอบ',
-      getValue: (r: (typeof filteredRows)[number]) => getResponsibleName(r),
-    },
-  ];
-
   return (
-    <div className="space-y-5">
-      {/* Row 1: 4 Soft-Tinted KPI Cards matching mockup */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpiCards.map((card) => (
-          <article
-            key={card.label}
-            className={`rounded-2xl border transition-colors ${card.surfaceClass}`}
+    <div className="space-y-4">
+      {/* 1) Clean Page Header Card (no banner image) */}
+      <section className="rounded-2xl border border-[#c6daf0] bg-white px-6 py-4 shadow-[0_2px_10px_rgba(15,42,74,0.04)] sm:px-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-[20px] font-bold tracking-tight text-[#0f489e] sm:text-[24px]">
+              ภาพรวมงานจัดซื้อจัดจ้าง
+            </h1>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#43648a] sm:text-[13px]">
+              <span>สถานะ ความคืบหน้า งบประมาณ และรายละเอียดการจัดซื้อจัดจ้าง</span>
+              <span aria-hidden="true" className="text-[#9cb9da]">
+                ·
+              </span>
+              <span className="font-bold text-[#1355b0] tabular-nums">
+                {viewFilter.year
+                  ? `ปีงบประมาณ พ.ศ. ${viewFilter.year}`
+                  : 'ทุกปีงบประมาณ'}
+              </span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 2) 4-Column Filter Strip */}
+      <section
+        aria-label="ตัวกรองภาพรวม"
+        className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"
+      >
+        <label className="block rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
+          <span className="block text-[11px] font-semibold text-[#5a7696]">
+            หมวดค่าใช้จ่าย
+          </span>
+          <select
+            value={expenseCategoryFilter}
+            onChange={(e) => setExpenseCategoryFilter(e.target.value)}
+            className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
           >
-            <button
-              type="button"
-              onClick={card.onClick}
-              className="flex h-full w-full flex-col justify-between rounded-2xl p-5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0c9583]"
-            >
-              <span className="text-[13.5px] font-bold tracking-tight text-[#0b3356]">
-                {card.label}
-              </span>
+            <option value="">ทุกหมวดค่าใช้จ่าย</option>
+            {expenseCatalog.map((group) => (
+              <option key={group.id} value={group.name}>
+                {group.name}
+              </option>
+            ))}
+            <option value={UNSPECIFIED_EXPENSE_CATEGORY}>
+              {UNSPECIFIED_EXPENSE_CATEGORY}
+            </option>
+          </select>
+        </label>
 
-              <div className="mt-3.5 flex items-baseline gap-2">
-                <span
-                  className={`font-mono-num font-bold leading-none tracking-tight ${
-                    card.unit ? 'text-[30px]' : 'text-[22px] xl:text-[24px]'
-                  } ${card.valueClass}`}
-                >
-                  {card.value}
-                </span>
-                {card.unit && (
-                  <span className="text-xs font-medium text-[#4a6c82]">
-                    {card.unit}
-                  </span>
-                )}
-              </div>
+        <label className="block rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
+          <span className="block text-[11px] font-semibold text-[#5a7696]">
+            หมวดงบประมาณ / แหล่งงบ
+          </span>
+          <select
+            value={fundScope}
+            onChange={(e) => setFundScope(e.target.value)}
+            className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
+          >
+            <option value="">ทั้งหมด</option>
+            <option value="__STANDALONE__">โครงการเดี่ยวเท่านั้น</option>
+            <option value="__BUDGET_DATA__">BUDGET DATA (งบหมวดวัสดุ)</option>
+            {fundSources.map((fund) => (
+              <option key={fund} value={fund}>
+                {fund}
+              </option>
+            ))}
+          </select>
+        </label>
 
-              <span className="mt-2.5 block truncate text-[11px] text-[#4f7086] tabular-nums">
-                {card.subtext}
-              </span>
-            </button>
-          </article>
-        ))}
-      </div>
+        <label className="block rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
+          <span className="block text-[11px] font-semibold text-[#5a7696]">
+            สถานะโครงการ
+          </span>
+          <select
+            value={viewFilter.status}
+            onChange={(e) => updateViewFilter({ status: e.target.value })}
+            className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
+          >
+            <option value="">ทั้งหมด</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      {/* Row 2: 2-Column Main Overview — Latest Projects Table + Status Donut Chart */}
-      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-[1.55fr_1fr]">
-        {/* Left: รายการโครงการล่าสุด */}
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-[#d4ebe8] bg-white shadow-[0_2px_10px_rgba(11,51,86,0.04)]">
-          <div className="flex items-center justify-between gap-3 bg-[#ebf7f6] px-5 py-4">
-            <h2 className="text-[15.5px] font-bold text-[#0b3356]">
-              รายการโครงการล่าสุด
-            </h2>
-            <button
-              type="button"
-              onClick={() => navigate('register')}
-              className="whitespace-nowrap shrink-0 text-xs font-semibold text-[#0b8273] transition-colors hover:text-[#075a50]"
-            >
-              ดูทั้งหมด ↗
-            </button>
-          </div>
-
-          <div className="flex-1 p-4 sm:p-5">
-            {latestRows.length === 0 ? (
-              <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cce4e1] bg-[#f7fcfb] px-5 py-10 text-center">
-                <p className="text-sm font-semibold text-[#163f63]">
-                  ยังไม่มีรายการโครงการในชุดข้อมูลนี้
-                </p>
-                <p className="mt-1 text-xs text-[#54758c]">
-                  เริ่มเพิ่มโครงการใหม่เพื่อติดตามสถานะ งบประมาณ และความคืบหน้า
-                </p>
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={onCreateProject}
-                    className="mt-4 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#0d9483] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#097768]"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    เพิ่มโครงการแรก
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
-                  <colgroup>
-                    <col style={{ width: '32%' }} />
-                    <col style={{ width: '20%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '18%' }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-[#eef8f7] text-[12px] font-semibold text-[#143d61]">
-                      <th className="rounded-l-xl px-3.5 py-2.5">ชื่อโครงการ</th>
-                      <th className="px-2.5 py-2.5 text-center">สถานะ</th>
-                      <th className="px-3 py-2.5 text-right whitespace-nowrap">
-                        งบประมาณ
-                      </th>
-                      <th className="px-3 py-2.5 text-right whitespace-nowrap">
-                        วงเงินตกลงซื้อ
-                      </th>
-                      <th className="rounded-r-xl px-3.5 py-2.5 whitespace-nowrap">
-                        ความคืบหน้า
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {latestRows.map((r) => {
-                      const displayBudget = getDisplayBudget(r);
-                      const agreedAmount = Number(r.agreed || 0);
-                      const progressPct = getProjectProgressPercent(
-                        r,
-                        state.steps,
-                      );
-                      const stepName = getStepName(state.steps, r.step);
-
-                      return (
-                        <tr
-                          key={r.id}
-                          onClick={() => onViewProject(r.id)}
-                          className="cursor-pointer border-b border-[#edf4f5] transition-colors last:border-b-0 hover:bg-[#f4fbfa]"
-                        >
-                          <td className="px-3.5 py-3.5 align-middle">
-                            <div
-                              className="truncate text-[12.5px] font-semibold text-[#0d2e4d]"
-                              title={r.title}
-                            >
-                              {r.title}
-                            </div>
-                            <div className="mt-0.5 truncate text-[11px] text-[#5c7a91] tabular-nums">
-                              {r.code} · ปีงบฯ {r.year}
-                            </div>
-                          </td>
-
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span
-                              className={`inline-block max-w-full truncate rounded-full px-2.5 py-1 text-[10.5px] font-semibold leading-tight ${getStatusBadgeClass(
-                                r.status,
-                              )}`}
-                              title={r.status}
-                            >
-                              {r.status}
-                            </span>
-                          </td>
-
-                          <td className="px-3 py-3.5 text-right align-middle font-mono-num text-[12px] font-semibold tabular-nums whitespace-nowrap">
-                            {displayBudget > 0 ? (
-                              <span className="text-[#123859]">
-                                {formatMoney(displayBudget)}
-                              </span>
-                            ) : (
-                              <span className="text-[#0c9583]">—</span>
-                            )}
-                          </td>
-
-                          <td className="px-3 py-3.5 text-right align-middle font-mono-num text-[12px] font-semibold tabular-nums whitespace-nowrap">
-                            {agreedAmount > 0 ? (
-                              <span className="text-[#0c8072]">
-                                {formatMoney(agreedAmount)}
-                              </span>
-                            ) : (
-                              <span className="text-[#0c9583]">—</span>
-                            )}
-                          </td>
-
-                          <td
-                            className="px-3.5 py-3.5 align-middle"
-                            title={`${stepName} (${progressPct}%)`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#e3ecef]">
-                                <div
-                                  className="h-full rounded-full bg-[#0ea38e] transition-all"
-                                  style={{ width: `${progressPct}%` }}
-                                />
-                              </div>
-                              <span className="w-8 shrink-0 text-right font-mono-num text-[11px] font-semibold text-[#335773] tabular-nums">
-                                {progressPct}%
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Right: สรุปสัดส่วนสถานะโครงการ (Donut Chart + Legend) */}
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-[#d4ebe8] bg-white shadow-[0_2px_10px_rgba(11,51,86,0.04)]">
-          <div className="flex items-center justify-between gap-2 bg-[#ebf7f6] px-5 py-4">
-            <h2 className="text-[15.5px] font-bold text-[#0b3356]">
-              สรุปสัดส่วนสถานะโครงการ
-            </h2>
-            <span className="font-mono-num text-[11.5px] font-semibold text-[#0b8273] tabular-nums">
-              {filteredRows.length} โครงการ
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
+          <label className="min-w-0 flex-1">
+            <span className="block text-[11px] font-semibold text-[#5a7696]">
+              ปีงบประมาณ
             </span>
+            <select
+              value={viewFilter.year}
+              onChange={(e) => updateViewFilter({ year: e.target.value })}
+              className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
+            >
+              <option value="">ทุกปีงบประมาณ</option>
+              {availableYears.map((y) => (
+                <option key={y} value={String(y)}>
+                  ปีงบประมาณ {y}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={refreshFromStorage}
+            title="รีเฟรชข้อมูลล่าสุด"
+            aria-label="รีเฟรชข้อมูลล่าสุด"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#d6e5f5] bg-[#f4f8fd] text-[#1453a8] transition hover:border-[#8bb7e8] hover:bg-[#e5f0fc]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </section>
+
+      {/* 3) 3 Blue-Header Executive Summary Cards */}
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
+        {/* Card 1: สัดส่วนโครงการตามสถานะ */}
+        <section className="flex flex-col overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
+          <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-[#1150a6] to-[#1b6ec9] px-5 py-3.5 text-white">
+            <h2 className="text-[14px] font-bold tracking-tight">
+              สัดส่วนโครงการตามสถานะ
+            </h2>
           </div>
 
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 p-5 sm:flex-row lg:flex-col xl:flex-row">
-            {/* Donut SVG */}
-            <div className="relative h-[180px] w-[180px] shrink-0">
-              <svg
-                viewBox="0 0 180 180"
-                className="h-full w-full"
-                role="img"
-                aria-label="แผนภูมิวงกลมแสดงสัดส่วนสถานะโครงการ"
-              >
-                <circle
-                  cx="90"
-                  cy="90"
-                  r={donutRadius}
-                  fill="none"
-                  stroke="#e7f2f1"
-                  strokeWidth="30"
-                />
+          <div className="flex flex-1 flex-col justify-between p-5">
+            <div className="flex flex-col items-center gap-5 sm:flex-row">
+              {/* Donut Chart */}
+              <div className="relative h-[138px] w-[138px] shrink-0">
+                <svg
+                  viewBox="0 0 140 140"
+                  className="h-full w-full"
+                  role="img"
+                  aria-label="แผนภูมิสัดส่วนโครงการตามสถานะ"
+                >
+                  <circle
+                    cx="70"
+                    cy="70"
+                    r={donutRadius}
+                    fill="none"
+                    stroke="#e6eff8"
+                    strokeWidth="18"
+                  />
 
-                {filteredRows.length > 0 && (
-                  <g transform="rotate(-90 90 90)">
-                    {(() => {
-                      let accumulated = 0;
-                      return statusChartSegments.map((seg) => {
-                        const segLen =
-                          (seg.count / filteredRows.length) * donutCircumference;
-                        const offset = -accumulated;
-                        accumulated += segLen;
-                        const isDimmed =
-                          hoveredStatus !== null && hoveredStatus !== seg.status;
+                  {dashboardRows.length > 0 && (
+                    <g transform="rotate(-90 70 70)">
+                      {(() => {
+                        let acc = 0;
+                        return statusSegments
+                          .filter((seg) => seg.count > 0)
+                          .map((seg) => {
+                            const segLen =
+                              (seg.count / dashboardRows.length) *
+                              donutCircumference;
+                            const offset = -acc;
+                            acc += segLen;
+                            const isDimmed =
+                              hoveredBucketId !== null &&
+                              hoveredBucketId !== seg.id;
 
-                        return (
-                          <circle
-                            key={seg.status}
-                            cx="90"
-                            cy="90"
-                            r={donutRadius}
-                            fill="none"
-                            stroke={seg.color}
-                            strokeWidth={hoveredStatus === seg.status ? 33 : 30}
-                            strokeDasharray={`${segLen} ${Math.max(
-                              0,
-                              donutCircumference - segLen,
-                            )}`}
-                            strokeDashoffset={offset}
-                            className="cursor-pointer transition-opacity duration-150"
-                            style={{ opacity: isDimmed ? 0.35 : 1 }}
-                            onMouseEnter={() => setHoveredStatus(seg.status)}
-                            onMouseLeave={() => setHoveredStatus(null)}
-                            onClick={() => {
-                              updateViewFilter({ status: seg.status });
-                              navigate('register');
-                            }}
-                          >
-                            <title>
-                              {seg.label}: {seg.count} รายการ (
-                              {seg.pct.toFixed(1)}%)
-                            </title>
-                          </circle>
-                        );
-                      });
-                    })()}
-                  </g>
-                )}
-              </svg>
+                            return (
+                              <circle
+                                key={seg.id}
+                                cx="70"
+                                cy="70"
+                                r={donutRadius}
+                                fill="none"
+                                stroke={seg.color}
+                                strokeWidth={hoveredBucketId === seg.id ? 21 : 18}
+                                strokeDasharray={`${segLen} ${Math.max(
+                                  0,
+                                  donutCircumference - segLen,
+                                )}`}
+                                strokeDashoffset={offset}
+                                className="cursor-pointer transition-opacity duration-150"
+                                style={{ opacity: isDimmed ? 0.3 : 1 }}
+                                onMouseEnter={() => setHoveredBucketId(seg.id)}
+                                onMouseLeave={() => setHoveredBucketId(null)}
+                                onClick={() => {
+                                  if (seg.statuses.length === 1) {
+                                    updateViewFilter({ status: seg.statuses[0] });
+                                    navigate('register');
+                                  } else {
+                                    navigate('register');
+                                  }
+                                }}
+                              >
+                                <title>
+                                  {seg.label}: {seg.count} โครงการ (
+                                  {seg.pct.toFixed(0)}%)
+                                </title>
+                              </circle>
+                            );
+                          });
+                      })()}
+                    </g>
+                  )}
+                </svg>
 
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-                {activeHoveredSegment ? (
-                  <>
-                    <span className="font-mono-num text-[22px] font-bold leading-none text-[#0b3356] tabular-nums">
-                      {activeHoveredSegment.pct.toFixed(0)}%
-                    </span>
-                    <span className="mt-1 line-clamp-2 text-[10.5px] font-medium leading-tight text-[#4b6b82]">
-                      {activeHoveredSegment.label}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-mono-num text-[26px] font-bold leading-none text-[#0b3356] tabular-nums">
-                      {filteredRows.length}
-                    </span>
-                    <span className="mt-1 text-[11px] font-medium text-[#52738a]">
-                      ทั้งหมด
-                    </span>
-                  </>
-                )}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
+                  {activeHoveredBucket ? (
+                    <>
+                      <span className="font-mono-num text-[22px] font-bold leading-none text-[#0f2a4a] tabular-nums">
+                        {activeHoveredBucket.count}
+                      </span>
+                      <span className="mt-1 text-[10.5px] font-semibold text-[#47688d] tabular-nums">
+                        {activeHoveredBucket.pct.toFixed(0)}%
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono-num text-[26px] font-bold leading-none text-[#0f2a4a] tabular-nums">
+                        {dashboardRows.length}
+                      </span>
+                      <span className="mt-1 text-[11px] font-medium text-[#526f8f]">
+                        โครงการ
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Interactive Chart Legend */}
-            <div className="w-full min-w-0 flex-1 space-y-2">
-              {statusChartSegments.map((seg) => {
-                const isActive = hoveredStatus === seg.status;
-                return (
+              {/* 5 Grouped Status Rows */}
+              <div className="w-full min-w-0 flex-1 space-y-2">
+                {statusSegments.map((seg) => (
                   <button
-                    key={seg.status}
+                    key={seg.id}
                     type="button"
-                    onMouseEnter={() => setHoveredStatus(seg.status)}
-                    onMouseLeave={() => setHoveredStatus(null)}
+                    onMouseEnter={() => setHoveredBucketId(seg.id)}
+                    onMouseLeave={() => setHoveredBucketId(null)}
                     onClick={() => {
-                      if (seg.count > 0) {
-                        updateViewFilter({ status: seg.status });
-                        navigate('register');
+                      if (seg.statuses.length === 1) {
+                        updateViewFilter({ status: seg.statuses[0] });
                       }
+                      navigate('register');
                     }}
-                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                      isActive ? 'bg-[#eef8f7]' : 'hover:bg-[#f5fbfa]'
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left transition-colors ${
+                      hoveredBucketId === seg.id
+                        ? 'bg-[#edf4fc]'
+                        : 'hover:bg-[#f5f9fe]'
                     }`}
                   >
-                    <span className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex min-w-0 items-center gap-2">
                       <span
-                        className="h-3 w-3 shrink-0 rounded-full"
+                        className="h-3 w-2.5 shrink-0 rounded-[3px]"
                         style={{ backgroundColor: seg.color }}
                       />
-                      <span className="truncate text-[12px] font-medium text-[#153a5b]">
+                      <span className="truncate text-[12px] font-medium text-[#1b3a5c]">
                         {seg.label}
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono-num text-[12px] font-semibold text-[#0b3356] tabular-nums">
+                    <span className="shrink-0 font-mono-num text-[12px] font-bold text-[#0f2a4a] tabular-nums">
                       {seg.count}{' '}
-                      <span className="font-normal text-[11px] text-[#5c7b91]">
+                      <span className="font-normal text-[11px] text-[#6d87a4]">
                         ({seg.pct.toFixed(0)}%)
                       </span>
                     </span>
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between rounded-xl border border-[#dce8f6] bg-[#f1f6fc] px-4 py-2.5 text-xs font-bold text-[#14355c]">
+              <span>รวมทั้งหมด</span>
+              <span className="font-mono-num text-[#1150a6] tabular-nums">
+                {dashboardRows.length} โครงการ
+              </span>
             </div>
           </div>
         </section>
-      </div>
 
-      {/* Financial Overview + BUDGET DATA */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.65fr]">
-        <section className="overflow-hidden rounded-2xl border border-[#d4ebe8] bg-white shadow-[0_2px_10px_rgba(11,51,86,0.04)]">
-          <div className="flex items-center justify-between gap-2 bg-[#ebf7f6] px-5 py-4">
-            <div>
-              <h2 className="text-[14.5px] font-bold text-[#0b3356]">
-                ภาพรวมวงเงิน
-              </h2>
-              <p className="mt-0.5 text-[11px] text-[#4c6d84]">
-                รวมงบโครงการเดี่ยว + BUDGET DATA (ไม่นับซ้ำการซื้อย่อย)
-              </p>
-            </div>
-            <span className="font-mono-num text-[11px] font-semibold text-[#0c8072]">
-              THB
+        {/* Card 2: เปรียบเทียบตามประเภทย่อย */}
+        <section className="flex flex-col overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
+          <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-[#1150a6] to-[#1b6ec9] px-5 py-3.5 text-white">
+            <h2 className="text-[14px] font-bold tracking-tight">
+              เปรียบเทียบตามประเภทย่อย
+            </h2>
+            <span className="shrink-0 whitespace-nowrap font-mono-num text-[11.5px] font-semibold text-[#dceeff] tabular-nums">
+              {subCategoryComparison.totalCount} ประเภทย่อย
             </span>
           </div>
 
-          <div className="p-5">
-            <div className="text-[11px] font-semibold text-[#47678c]">
-              วงเงินงบประมาณรวมสุทธิ
-            </div>
-            <div className="mt-1.5 flex items-baseline gap-2">
-              <span className="font-mono-num text-[26px] font-bold text-[#0b3356] tabular-nums">
-                {formatMoney(overview.totalBudget)}
-              </span>
-              <span className="text-xs text-[#547091]">บาท</span>
-            </div>
+          <div className="flex flex-1 flex-col justify-between p-5">
+            <div className="space-y-3">
+              {subCategoryComparison.rows.length > 0 ? (
+                subCategoryComparison.rows.map((item, idx) => {
+                  const sharePct =
+                    subCategoryComparison.totalSpent > 0
+                      ? (item.spent / subCategoryComparison.totalSpent) * 100
+                      : 0;
+                  const agreedBarPct =
+                    subCategoryComparison.maxSpent > 0
+                      ? (item.agreed / subCategoryComparison.maxSpent) * 100
+                      : 0;
+                  const reservedBarPct =
+                    subCategoryComparison.maxSpent > 0
+                      ? (item.reserved / subCategoryComparison.maxSpent) * 100
+                      : 0;
+                  const barColors = [
+                    'from-[#1150a6] to-[#2176d6]',
+                    'from-[#0d825b] to-[#10b981]',
+                    'from-[#2563eb] to-[#60a5fa]',
+                    'from-[#0e7490] to-[#06b6d4]',
+                    'from-[#64748b] to-[#94a3b8]',
+                  ];
+                  const barColor = item.isUnspecified
+                    ? 'from-[#94a3b8] to-[#cbd5e1]'
+                    : barColors[idx % barColors.length];
+                  const canDrillDown =
+                    item.key !== '__OTHER_SUBS__' && !item.isUnspecified;
 
-            {overview.poolCount > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[#4d6c90] tabular-nums">
-                <span>
-                  โครงการเดี่ยว: ฿ {formatMoney(overview.standaloneBudget)} (
-                  {overview.standaloneCount})
-                </span>
-                <span>
-                  BUDGET DATA: ฿ {formatMoney(overview.poolAllocatedBudget)} (
-                  {overview.poolCount} หมวด)
-                </span>
-              </div>
-            )}
-
-            <div className="mt-4 mb-2 flex h-2.5 overflow-hidden rounded-full bg-[#e2eff0]">
-              <div
-                className="h-full bg-[#0ea38e] transition-all"
-                style={{ width: `${agreedRatio}%` }}
-                title={`วงเงินตกลงซื้อ/จ้าง ฿ ${formatMoney(overview.totalAgreed)}`}
-              />
-              {reservedRatio > 0 && (
-                <div
-                  className="h-full bg-[#f5b731] transition-all"
-                  style={{ width: `${reservedRatio}%` }}
-                  title={`กันวงเงินตามราคากลาง (BUDGET DATA) ฿ ${formatMoney(overview.totalReserved)}`}
-                />
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      disabled={!canDrillDown}
+                      onClick={() => {
+                        if (!canDrillDown) return;
+                        updateViewFilter({
+                          expenseCategory: item.categoryName,
+                          expenseSubCategory:
+                            item.subName === UNSPECIFIED_EXPENSE_SUBCATEGORY
+                              ? ''
+                              : item.subName,
+                        });
+                        navigate('register');
+                      }}
+                      title={`${item.label}${item.categoryName ? ` (${item.categoryName})` : ''} · ตกลงซื้อ/จ้าง ฿ ${formatMoney(item.agreed)}${item.reserved > 0 ? ` + กันวงเงิน ฿ ${formatMoney(item.reserved)}` : ''} · รวม ฿ ${formatMoney(item.spent)}`}
+                      className={`block w-full rounded-lg px-2 py-1.5 text-left transition ${
+                        canDrillDown
+                          ? 'cursor-pointer hover:bg-[#f1f6fc]'
+                          : 'cursor-default'
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between gap-2 text-xs">
+                        <span className="truncate font-semibold text-[#17395e]">
+                          {item.label}
+                        </span>
+                        <span className="shrink-0 font-mono-num font-bold text-[#0f2a4a] tabular-nums">
+                          {formatMoney(item.spent)} บ.{' '}
+                          <span className="font-normal text-[11px] text-[#6a86a3]">
+                            ({sharePct.toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-[#e6eff9]">
+                        {item.agreed > 0 && (
+                          <div
+                            className={`h-full bg-gradient-to-r ${barColor} transition-all`}
+                            style={{
+                              width: `${Math.max(agreedBarPct, 4)}%`,
+                            }}
+                          />
+                        )}
+                        {item.reserved > 0 && (
+                          <div
+                            className="h-full bg-[#f59e0b] transition-all"
+                            style={{
+                              width: `${Math.max(reservedBarPct, 3)}%`,
+                            }}
+                          />
+                        )}
+                      </div>
+                      {item.reserved > 0 && (
+                        <div className="mt-1 flex items-center justify-between text-[10px] text-[#6c829c] tabular-nums">
+                          <span>
+                            ตกลง {formatMoney(item.agreed)} บ.
+                          </span>
+                          <span className="font-medium text-[#b45309]">
+                            กันเงิน {formatMoney(item.reserved)} บ.
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-xl border border-dashed border-[#d2e2f3] bg-[#f7fbff] px-4 py-6 text-center text-xs text-[#607d9d]">
+                  ยังไม่มีข้อมูลประเภทย่อยในชุดข้อมูลนี้
+                </div>
               )}
             </div>
 
-            <div className="text-[11px] font-medium text-[#3b5b82] tabular-nums">
-              ผูกพัน / ใช้วงเงินแล้ว {committedPct.toFixed(1)}% ของงบประมาณรวม
+            <div className="mt-5 flex items-center justify-between gap-2 rounded-xl border border-[#dce8f6] bg-[#f1f6fc] px-4 py-2.5 text-xs font-bold text-[#14355c] tabular-nums">
+              <span>ค่าใช้จ่ายรวม (รวมกันเงิน)</span>
+              <span className="font-mono-num text-[#1150a6]">
+                {formatMoney(subCategoryComparison.totalSpent)} บ.
+              </span>
             </div>
+          </div>
+        </section>
 
-            <div className="mt-4 space-y-2 border-t border-[#e4f0f0] pt-3.5 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-[#35557a]">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0ea38e]" />
-                  วงเงินตกลงซื้อ / จ้างรวม
-                </span>
-                <b className="font-mono-num font-semibold text-[#0b3356] tabular-nums">
-                  ฿ {formatMoney(overview.totalAgreed)}
-                </b>
+        {/* Card 3: ภาพรวมงบประมาณ */}
+        <section className="flex flex-col overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
+          <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-[#1150a6] to-[#1b6ec9] px-5 py-3.5 text-white">
+            <h2 className="text-[14px] font-bold tracking-tight">
+              ภาพรวมงบประมาณ{' '}
+              {viewFilter.year ? `พ.ศ. ${viewFilter.year}` : 'ทุกปีงบฯ'}
+            </h2>
+            <span className="shrink-0 whitespace-nowrap font-mono-num text-[11.5px] font-semibold text-[#dceeff] tabular-nums">
+              {dashboardRows.length} โครงการ
+            </span>
+          </div>
+
+          <div className="flex flex-1 flex-col justify-between p-5">
+            <div className="space-y-4">
+              {/* Bar 1: งบประมาณรวมสุทธิ */}
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-2 font-semibold text-[#234366]">
+                    <span className="h-3 w-2.5 rounded-[3px] bg-[#f59e0b]" />
+                    งบประมาณรวมสุทธิ
+                  </span>
+                  <span className="font-mono-num text-[13.5px] font-bold text-[#0f2a4a] tabular-nums">
+                    {formatMoney(overview.totalBudget)} บ.
+                  </span>
+                </div>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#eef2f7]">
+                  <div
+                    className="h-full rounded-full bg-[#f59e0b] transition-all"
+                    style={{ width: overview.totalBudget > 0 ? '100%' : '0%' }}
+                  />
+                </div>
+              </div>
+
+              {/* Bar 2: วงเงินตกลงซื้อ / จ้าง */}
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-2 font-semibold text-[#234366]">
+                    <span className="h-3 w-2.5 rounded-[3px] bg-[#10b981]" />
+                    วงเงินตกลงซื้อ / จ้าง
+                  </span>
+                  <span className="font-mono-num text-[13.5px] font-bold text-[#0f2a4a] tabular-nums">
+                    {formatMoney(overview.totalAgreed)} บ.
+                  </span>
+                </div>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#eef2f7]">
+                  <div
+                    className="h-full rounded-full bg-[#10b981] transition-all"
+                    style={{ width: `${agreedPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Bar 3: เบิกจ่ายฎีกาแล้ว */}
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-2 font-semibold text-[#234366]">
+                    <span className="h-3 w-2.5 rounded-[3px] bg-[#2563eb]" />
+                    เบิกจ่ายฎีกาแล้ว
+                  </span>
+                  <span className="font-mono-num text-[13.5px] font-bold text-[#1d4ed8] tabular-nums">
+                    {formatMoney(overview.totalVoucher)} บ.
+                  </span>
+                </div>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#eef2f7]">
+                  <div
+                    className="h-full rounded-full bg-[#2563eb] transition-all"
+                    style={{ width: `${voucherPct}%` }}
+                  />
+                </div>
               </div>
 
               {overview.totalReserved > 0 && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[#35557a]">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#f5b731]" />
-                    กันวงเงินตามราคากลาง (BUDGET DATA)
+                <div className="flex items-center justify-between gap-2 text-[11px] text-[#7c5611] tabular-nums">
+                  <span>กันวงเงินตามราคากลาง (BUDGET DATA)</span>
+                  <span className="font-mono-num font-semibold">
+                    {formatMoney(overview.totalReserved)} บ.
                   </span>
-                  <b className="font-mono-num font-semibold text-[#a66d0d] tabular-nums">
-                    ฿ {formatMoney(overview.totalReserved)}
-                  </b>
                 </div>
               )}
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-[#35557a]">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#c9dfe0]" />
-                  คงเหลือ / ส่วนต่างจากงบประมาณ
-                </span>
-                <b
-                  className={`font-mono-num font-semibold tabular-nums ${
-                    overview.totalRemaining < 0
-                      ? 'text-[#b52c2c]'
-                      : 'text-[#0c8a79]'
-                  }`}
-                >
-                  ฿ {formatMoney(overview.totalRemaining)}
-                </b>
-              </div>
             </div>
 
-            <p className="mt-4 text-[10.5px] leading-relaxed text-[#587496]">
-              ไม่รวมสถานะพักงานและยกเลิก · เบิกจ่ายฎีกาแล้ว ฿{' '}
-              <span className="font-mono-num font-semibold text-[#1d426d]">
-                {formatMoney(overview.totalVoucher)}
+            <div className="mt-5 flex items-center justify-between gap-2 rounded-xl border border-[#dce8f6] bg-[#f1f6fc] px-4 py-2.5 text-xs font-bold text-[#14355c] tabular-nums">
+              <span>ตกลงซื้อ/จ้าง {agreedPct.toFixed(0)}%</span>
+              <span className="text-[#1150a6]">
+                คงเหลือ {formatMoney(overview.totalRemaining)} บ.
               </span>
-            </p>
+            </div>
           </div>
         </section>
+      </div>
 
-        <section className="overflow-hidden rounded-2xl border border-[#d4ebe8] bg-white shadow-[0_2px_10px_rgba(11,51,86,0.04)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#ebf7f6] px-5 py-4">
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#0c8a79] ring-1 ring-[#cce6e3]">
-                <Wallet className="h-4 w-4" />
-              </span>
-              <div>
-                <h2 className="text-[14.5px] font-bold text-[#0b3356]">
-                  BUDGET DATA (หมวดวัสดุ / งบก้อนใหญ่)
-                </h2>
-                <p className="mt-0.5 text-[11px] text-[#4c6d84]">
-                  ติดตามการเบิกใช้วงเงินก้อนใหญ่ที่ทยอยจัดซื้อเป็นครั้งคราว
-                </p>
-              </div>
+      {/* 3.5) สรุปตามหมวดค่าใช้จ่ายและประเภทย่อย */}
+      <section className="overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dce8f6] bg-gradient-to-r from-[#f3f8fe] to-[#e8f2fc] px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1150a6] ring-1 ring-[#c3d9f0]">
+              <FolderTree className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-[15px] font-bold text-[#0f2a4a]">
+                สรุปตามหมวดค่าใช้จ่ายและประเภทย่อย
+              </h2>
+              <p className="mt-0.5 text-[11px] text-[#4c6b8e] tabular-nums">
+                แยกงบประมาณและวงเงินตกลงซื้อ/จ้างตามโครงสร้างหมวดค่าใช้จ่าย ({expenseHierarchy.length} หมวด · {totalSubCategoryCount} ประเภทย่อย)
+              </p>
             </div>
+          </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            {expenseCategoryFilter && (
+              <button
+                type="button"
+                onClick={() => setExpenseCategoryFilter('')}
+                className="rounded-lg border border-[#c5daf0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#31557d] hover:bg-[#edf4fc]"
+              >
+                ล้างตัวกรองหมวด
+              </button>
+            )}
             <button
               type="button"
               onClick={() => navigate('budgets')}
-              className="whitespace-nowrap shrink-0 rounded-lg border border-[#b9dfda] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#0c7a6c] transition-colors hover:bg-[#e5f5f3]"
+              className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 rounded-lg border border-[#aecae9] bg-white px-3 py-1.5 text-xs font-semibold text-[#1150a6] transition hover:border-[#6ea2df] hover:bg-[#e7f1fc]"
             >
-              จัดการ BUDGET DATA ↗
+              จัดการ BUDGET DATA
+              <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
-          </div>
-
-          <div className="p-5">
-            {poolUsages.length === 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[#cce4e1] bg-[#f7fcfb] px-4 py-5">
-                <div className="text-xs text-[#4a6688]">
-                  ยังไม่ได้ตั้งรายการ BUDGET DATA ในชุดข้อมูลนี้ —
-                  สร้างหมวดเช่น ค่าวัสดุสำนักงาน หรือ ค่าวัสดุก่อสร้าง
-                  เพื่อตัดยอดรายครั้งโดยไม่นับงบซ้ำ
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('budgets')}
-                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#0d9483] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#097768]"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  เพิ่ม BUDGET DATA
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                {poolUsages.map((usage) => {
-                  const { pool } = usage;
-                  const allocated = Math.max(0, Number(pool.allocatedBudget || 0));
-                  const pAgreedPct =
-                    allocated > 0
-                      ? Math.min(100, (usage.agreedAmount / allocated) * 100)
-                      : 0;
-                  const pReservedPct =
-                    allocated > 0
-                      ? Math.min(
-                          Math.max(0, 100 - pAgreedPct),
-                          (usage.reservedAmount / allocated) * 100,
-                        )
-                      : 0;
-
-                  return (
-                    <article
-                      key={pool.id}
-                      className={`flex flex-col justify-between rounded-xl border p-4 ${
-                        usage.isOverBudget
-                          ? 'border-[#eab3b3] bg-[#fffafa]'
-                          : 'border-[#d6ece9] bg-[#f8fdfc]'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4c6f85]">
-                              <span className="font-mono-num">
-                                ปีงบฯ {pool.year}
-                              </span>
-                              {pool.code && (
-                                <>
-                                  <span>·</span>
-                                  <span className="font-mono-num">
-                                    {pool.code}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <h3 className="mt-0.5 truncate text-[13.5px] font-bold text-[#0b3356]">
-                              {pool.name}
-                            </h3>
-                          </div>
-
-                          <span
-                            className={`shrink-0 font-mono-num text-[11px] font-bold tabular-nums ${
-                              usage.isOverBudget
-                                ? 'text-[#b52c2c]'
-                                : usage.utilizationPct >= 85
-                                  ? 'text-[#b06d0c]'
-                                  : 'text-[#0c8a79]'
-                            }`}
-                          >
-                            {usage.utilizationPct.toFixed(0)}%
-                          </span>
-                        </div>
-
-                        <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[#dfeceb]">
-                          {usage.isOverBudget ? (
-                            <div className="h-full w-full bg-[#c93434]" />
-                          ) : (
-                            <>
-                              <div
-                                className="h-full bg-[#0ea38e]"
-                                style={{ width: `${pAgreedPct}%` }}
-                              />
-                              {pReservedPct > 0 && (
-                                <div
-                                  className="h-full bg-[#f5b731]"
-                                  style={{ width: `${pReservedPct}%` }}
-                                />
-                              )}
-                            </>
-                          )}
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <div className="text-[10px] text-[#567394]">
-                              ใช้ไป / ตั้งไว้
-                            </div>
-                            <div className="font-mono-num font-semibold text-[#13345c] tabular-nums">
-                              ฿ {formatMoney(usage.usedAmount)}
-                              <span className="font-normal text-[#5d7a9c]">
-                                {' '}
-                                / {formatMoney(allocated)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[10px] text-[#567394]">
-                              คงเหลือ
-                            </div>
-                            <div
-                              className={`font-mono-num font-bold tabular-nums ${
-                                usage.isOverBudget
-                                  ? 'text-[#b52c2c]'
-                                  : 'text-[#0c8a79]'
-                              }`}
-                            >
-                              ฿ {formatMoney(usage.remainingAmount)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#e1f0ee] pt-2.5 text-[11px]">
-                        <span className="text-[#517094] tabular-nums">
-                          ซื้อแล้ว {usage.eligibleCount} ครั้ง
-                        </span>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => onCreatePurchaseFromPool(pool.id)}
-                            className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-[#0b8273] hover:underline"
-                          >
-                            <Plus className="h-3 w-3" />
-                            ซื้อในวงเงินนี้
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(true)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[#aecae9] bg-white px-3 py-1.5 text-xs font-semibold text-[#1150a6] transition hover:border-[#6ea2df] hover:bg-[#e7f1fc]"
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+                จัดการหมวดค่าใช้จ่าย
+              </button>
             )}
           </div>
-        </section>
-      </div>
+        </div>
 
-      {/* 3-Column Compact Breakdown */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {miniBreakdowns.map((group) => {
-          const uniqueValues = [
-            ...new Set(filteredRows.map(group.getValue)),
-          ].filter(Boolean);
+        <div className="p-4 sm:p-5">
+          {expenseHierarchy.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#c8dcf2] bg-[#f7fbff] px-5 py-7 text-center text-xs text-[#567496]">
+              ยังไม่มีรายการที่จำแนกหมวดค่าใช้จ่ายในชุดข้อมูลนี้ — ระบุหมวดค่าใช้จ่ายและประเภทย่อยได้ในหน้าบันทึกโครงการหรือ BUDGET DATA
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {expenseHierarchy.map((cat) => {
+                const isExpanded = Boolean(expandedCategories[cat.name]);
+                const usedAmt = cat.agreed + cat.reserved;
+                const catUsePct =
+                  cat.budget > 0
+                    ? Math.min(100, (usedAmt / cat.budget) * 100)
+                    : 0;
+                const shareOfTotal =
+                  overview.totalBudget > 0
+                    ? Math.min(100, (cat.budget / overview.totalBudget) * 100)
+                    : 0;
 
-          return (
-            <section
-              key={group.title}
-              className="rounded-2xl border border-[#d4ebe8] bg-white p-4 shadow-[0_2px_10px_rgba(11,51,86,0.03)]"
-            >
-              <h3 className="mb-3 text-xs font-bold text-[#0b3356]">
-                {group.title}
-              </h3>
-              {uniqueValues.length > 0 ? (
-                <div className="space-y-2">
-                  {uniqueValues.map((val) => {
-                    const count = filteredRows.filter(
-                      (r) => group.getValue(r) === val,
-                    ).length;
-                    return (
-                      <div
-                        key={val}
-                        className="flex items-center justify-between gap-2 text-xs text-[#36557a]"
-                      >
-                        <span className="truncate">{val}</span>
-                        <b className="font-mono-num font-semibold text-[#0b3356] tabular-nums">
-                          {count}
-                        </b>
+                return (
+                  <div
+                    key={cat.name}
+                    className="overflow-hidden rounded-xl border border-[#d4e4f5] bg-[#f8fbff]"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedCategories((prev) => ({
+                          ...prev,
+                          [cat.name]: !isExpanded,
+                        }))
+                      }
+                      className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[#eef5fd]"
+                    >
+                      <div className="flex min-w-[200px] flex-1 items-center gap-2.5">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white text-[#1150a6] ring-1 ring-[#c6dcf2]">
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`text-[13.5px] font-bold ${
+                                cat.isUnspecified
+                                  ? 'text-[#5b7694]'
+                                  : 'text-[#0f2a4a]'
+                              }`}
+                            >
+                              {cat.name}
+                            </span>
+                            <span className="rounded bg-white px-2 py-0.5 text-[10.5px] font-semibold text-[#3f628a] ring-1 ring-[#d1e2f4] tabular-nums">
+                              {cat.subCategories.length} ประเภทย่อย ·{' '}
+                              {cat.projectCount} รายการ
+                              {cat.poolCount > 0
+                                ? ` · ${cat.poolCount} BUDGET DATA`
+                                : ''}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 flex max-w-[280px] items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#dce9f7]">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[#1150a6] to-[#1e7ee0]"
+                                style={{
+                                  width: `${Math.max(catUsePct, usedAmt > 0 ? 4 : 0)}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="font-mono-num text-[10.5px] font-semibold text-[#47678a] tabular-nums">
+                              ใช้ไป {catUsePct.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
                       </div>
+
+                      <div className="flex flex-wrap items-center gap-4 text-right tabular-nums">
+                        <div>
+                          <div className="text-[10px] font-medium text-[#5c7899]">
+                            งบประมาณ ({shareOfTotal.toFixed(0)}%)
+                          </div>
+                          <div className="font-mono-num text-[13px] font-bold text-[#0f2a4a]">
+                            ฿ {formatMoney(cat.budget)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-medium text-[#5c7899]">
+                            ตกลงซื้อ/จ้าง
+                          </div>
+                          <div className="font-mono-num text-[13px] font-bold text-[#047857]">
+                            ฿ {formatMoney(cat.agreed)}
+                          </div>
+                        </div>
+                        <div className="hidden sm:block">
+                          <div className="text-[10px] font-medium text-[#5c7899]">
+                            คงเหลือ
+                          </div>
+                          <div
+                            className={`font-mono-num text-[13px] font-bold ${
+                              cat.budget - usedAmt < 0
+                                ? 'text-[#be123c]'
+                                : 'text-[#1150a6]'
+                            }`}
+                          >
+                            ฿ {formatMoney(cat.budget - usedAmt)}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {isExpanded && cat.subCategories.length > 0 && (
+                      <div className="border-t border-[#dce8f6] bg-white p-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {cat.subCategories.map((sub) => {
+                            const subBudget = Math.max(0, sub.budget);
+                            const subUsed = sub.agreed + sub.reserved;
+                            const subRemaining = subBudget - subUsed;
+                            const isOverBudget =
+                              subBudget > 0 && subUsed > subBudget;
+                            const utilizationPct =
+                              subBudget > 0 ? (subUsed / subBudget) * 100 : 0;
+                            const pAgreedPct =
+                              subBudget > 0
+                                ? Math.min(100, (sub.agreed / subBudget) * 100)
+                                : 0;
+                            const pReservedPct =
+                              subBudget > 0
+                                ? Math.min(
+                                    Math.max(0, 100 - pAgreedPct),
+                                    (sub.reserved / subBudget) * 100,
+                                  )
+                                : 0;
+                            const singlePool =
+                              sub.pools.length === 1 ? sub.pools[0] : null;
+                            const classificationText =
+                              formatExpenseClassification(
+                                cat.isUnspecified ? '' : cat.name,
+                                sub.name === UNSPECIFIED_EXPENSE_SUBCATEGORY
+                                  ? ''
+                                  : sub.name,
+                              ) || cat.name;
+
+                            return (
+                              <article
+                                key={sub.name}
+                                className={`flex flex-col justify-between rounded-xl border p-4 ${
+                                  isOverBudget
+                                    ? 'border-[#f4b8c2] bg-[#fff9fa]'
+                                    : 'border-[#d4e4f5] bg-[#f8fbff]'
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium text-[#527092] tabular-nums">
+                                        {sub.years.length > 0 ? (
+                                          <span>
+                                            ปีงบฯ {sub.years.join(', ')}
+                                          </span>
+                                        ) : (
+                                          <span>
+                                            {viewFilter.year
+                                              ? `ปีงบฯ ${viewFilter.year}`
+                                              : 'ทุกปีงบฯ'}
+                                          </span>
+                                        )}
+                                        {singlePool?.code ? (
+                                          <>
+                                            <span>·</span>
+                                            <span className="font-mono-num">
+                                              {singlePool.code}
+                                            </span>
+                                          </>
+                                        ) : sub.poolCount > 1 ? (
+                                          <>
+                                            <span>·</span>
+                                            <span>
+                                              {sub.poolCount} BUDGET DATA
+                                            </span>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                      <h3 className="mt-0.5 truncate text-[13.5px] font-bold text-[#0f2a4a]">
+                                        {sub.name}
+                                      </h3>
+                                      <div className="mt-0.5 truncate text-[10.5px] font-medium text-[#1d5ab5]">
+                                        {classificationText}
+                                      </div>
+                                    </div>
+
+                                    <span
+                                      className={`shrink-0 font-mono-num text-xs font-bold tabular-nums ${
+                                        isOverBudget
+                                          ? 'text-[#be123c]'
+                                          : utilizationPct >= 85
+                                            ? 'text-[#b45309]'
+                                            : 'text-[#1150a6]'
+                                      }`}
+                                    >
+                                      {utilizationPct.toFixed(0)}%
+                                    </span>
+                                  </div>
+
+                                  <div
+                                    className="mt-3 flex h-2 overflow-hidden rounded-full bg-[#dce9f7]"
+                                    title={`ตกลงซื้อ/จ้าง ฿ ${formatMoney(sub.agreed)}${sub.reserved > 0 ? ` + กันวงเงิน ฿ ${formatMoney(sub.reserved)}` : ''} จากงบประมาณ ฿ ${formatMoney(subBudget)}`}
+                                  >
+                                    {isOverBudget ? (
+                                      <div className="h-full w-full bg-[#e11d48]" />
+                                    ) : (
+                                      <>
+                                        {pAgreedPct > 0 && (
+                                          <div
+                                            className="h-full bg-gradient-to-r from-[#1150a6] to-[#1e7ee0] transition-all"
+                                            style={{ width: `${pAgreedPct}%` }}
+                                          />
+                                        )}
+                                        {pReservedPct > 0 && (
+                                          <div
+                                            className="h-full bg-[#f59e0b] transition-all"
+                                            style={{
+                                              width: `${pReservedPct}%`,
+                                            }}
+                                          />
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                                    <div>
+                                      <div className="text-[10px] text-[#5c7899]">
+                                        ใช้ไป / ตั้งไว้
+                                      </div>
+                                      <div className="font-mono-num font-semibold text-[#13345c] tabular-nums">
+                                        ฿ {formatMoney(subUsed)}
+                                        <span className="font-normal text-[#6581a1]">
+                                          {' '}
+                                          / {formatMoney(subBudget)}
+                                        </span>
+                                      </div>
+                                      {sub.reserved > 0 && (
+                                        <div className="mt-0.5 font-mono-num text-[10px] font-medium text-[#b45309] tabular-nums">
+                                          รวมกันเงิน ฿ {formatMoney(sub.reserved)}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[10px] text-[#5c7899]">
+                                        คงเหลือ
+                                      </div>
+                                      <div
+                                        className={`font-mono-num font-bold tabular-nums ${
+                                          subRemaining < 0
+                                            ? 'text-[#be123c]'
+                                            : 'text-[#047857]'
+                                        }`}
+                                      >
+                                        ฿ {formatMoney(subRemaining)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#dce8f6] pt-2.5 text-[11px]">
+                                  <span className="text-[#517094] tabular-nums">
+                                    {sub.poolCount > 0
+                                      ? `ซื้อแล้ว ${sub.projectCount} ครั้ง`
+                                      : `${sub.projectCount} รายการ`}
+                                  </span>
+                                  {isAdmin && singlePool ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onCreatePurchaseFromPool(singlePool.id)
+                                      }
+                                      className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-[#1150a6] hover:underline"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      ซื้อในวงเงินนี้
+                                    </button>
+                                  ) : !cat.isUnspecified ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateViewFilter({
+                                          expenseCategory: cat.name,
+                                          expenseSubCategory:
+                                            sub.name ===
+                                            UNSPECIFIED_EXPENSE_SUBCATEGORY
+                                              ? ''
+                                              : sub.name,
+                                        });
+                                        navigate('register');
+                                      }}
+                                      className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-[#1150a6] hover:underline"
+                                    >
+                                      ดูรายการ
+                                      <ArrowUpRight className="h-3 w-3" />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 4) รายการโครงการล่าสุด */}
+      <section className="overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dce8f6] bg-gradient-to-r from-[#f3f8fe] to-[#e8f2fc] px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-[15px] font-bold text-[#0f2a4a]">
+              รายการโครงการล่าสุด
+            </h2>
+            <span className="text-xs font-medium text-[#4d6d91] tabular-nums">
+              · แสดง {latestRows.length} จาก {dashboardRows.length} รายการ
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('register')}
+            className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 rounded-lg border border-[#aecae9] bg-white px-3 py-1.5 text-xs font-semibold text-[#1150a6] transition hover:border-[#6ea2df] hover:bg-[#e7f1fc]"
+          >
+            ดูทะเบียนทั้งหมด
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          {latestRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#c8dcf2] bg-[#f7fbff] px-5 py-10 text-center">
+              <p className="text-sm font-semibold text-[#173b66]">
+                ยังไม่มีรายการโครงการในชุดข้อมูลนี้
+              </p>
+              <p className="mt-1 text-xs text-[#567496]">
+                เพิ่มโครงการใหม่หรือปรับตัวกรองด้านบนเพื่อดูรายละเอียด
+              </p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={onCreateProject}
+                  className="mt-4 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1150a6] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#0d3f85]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  เพิ่มโครงการแรก
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] table-fixed border-collapse text-left">
+                <colgroup>
+                  <col style={{ width: '34%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '18%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-[#eef5fc] text-[12px] font-semibold text-[#173d6b]">
+                    <th className="rounded-l-xl px-4 py-2.5">ชื่อโครงการ</th>
+                    <th className="px-3 py-2.5 text-center">สถานะ</th>
+                    <th className="px-3 py-2.5 text-right whitespace-nowrap">
+                      งบประมาณ
+                    </th>
+                    <th className="px-3 py-2.5 text-right whitespace-nowrap">
+                      วงเงินตกลงซื้อ
+                    </th>
+                    <th className="rounded-r-xl px-4 py-2.5 whitespace-nowrap">
+                      ความคืบหน้า
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {latestRows.map((r) => {
+                    const displayBudget = getDisplayBudget(r);
+                    const agreedAmount = Number(r.agreed || 0);
+                    const progressPct = getProjectProgressPercent(
+                      r,
+                      state.steps,
+                    );
+                    const stepName = getStepName(state.steps, r.step);
+
+                    return (
+                      <tr
+                        key={r.id}
+                        onClick={() => onViewProject(r.id)}
+                        className="cursor-pointer border-b border-[#e8f0f9] transition-colors last:border-b-0 hover:bg-[#f4f9fe]"
+                      >
+                        <td className="px-4 py-3.5 align-middle">
+                          <div
+                            className="truncate text-[13px] font-semibold text-[#0f2a4a]"
+                            title={r.title}
+                          >
+                            {r.title}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-[#587596] tabular-nums">
+                            {r.code} · ปีงบฯ {r.year} · {r.department}
+                          </div>
+                        </td>
+
+                        <td className="px-2.5 py-3.5 text-center align-middle">
+                          <span
+                            className={`inline-block max-w-full truncate rounded-md px-2.5 py-1 text-[11px] font-semibold leading-tight ${getStatusBadgeClass(
+                              r.status,
+                            )}`}
+                            title={r.status}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-3.5 text-right align-middle font-mono-num text-[12.5px] font-semibold tabular-nums whitespace-nowrap">
+                          {displayBudget > 0 ? (
+                            <span className="text-[#16365b]">
+                              {formatMoney(displayBudget)}
+                            </span>
+                          ) : (
+                            <span className="text-[#8ba4bf]">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-3 py-3.5 text-right align-middle font-mono-num text-[12.5px] font-semibold tabular-nums whitespace-nowrap">
+                          {agreedAmount > 0 ? (
+                            <span className="text-[#0f6b47]">
+                              {formatMoney(agreedAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-[#8ba4bf]">—</span>
+                          )}
+                        </td>
+
+                        <td
+                          className="px-4 py-3.5 align-middle"
+                          title={`${stepName} (${progressPct}%)`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#e3edf7]">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[#1150a6] to-[#237be0] transition-all"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                            <span className="w-8 shrink-0 text-right font-mono-num text-[11.5px] font-semibold text-[#2e4f75] tabular-nums">
+                              {progressPct}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#6682a1]">ไม่มีข้อมูล</p>
-              )}
-            </section>
-          );
-        })}
-      </div>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <ExpenseCategoriesModal
+        open={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+      />
     </div>
   );
 }

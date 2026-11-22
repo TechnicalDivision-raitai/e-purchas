@@ -19,6 +19,10 @@ import {
   VIEW_STORAGE_KEY,
 } from '../data/constants';
 import { SARABAN_CATEGORY_META } from '../data/constants';
+import {
+  resolveProjectExpenseClassification,
+  UNSPECIFIED_EXPENSE_CATEGORY,
+} from '../domain/expenseCategories';
 import { buildPersonPositionMap } from '../domain/personPositions';
 import {
   applySarabanQueueItemToProject,
@@ -39,6 +43,7 @@ import {
 } from '../services/googleSync';
 import type {
   BudgetPool,
+  ExpenseCategoryGroup,
   PageId,
   ProcurementState,
   ProjectRecord,
@@ -74,6 +79,7 @@ interface ProcurementContextValue {
   deleteProject: (id: string) => boolean;
   saveBudgetPool: (pool: BudgetPool) => boolean;
   deleteBudgetPool: (id: string) => boolean;
+  saveExpenseCategories: (catalog: ExpenseCategoryGroup[]) => boolean;
   refreshFromStorage: () => Promise<void>;
   refreshSarabanQueue: (notifyOnSuccess?: boolean) => Promise<void>;
   approveSarabanQueueItem: (
@@ -207,6 +213,9 @@ function normalizeLoadedState(raw: ProcurementState): ProcurementState {
       step: normalizeLegacyStepId(r.step),
     })),
     budgetPools: Array.isArray(raw.budgetPools) ? raw.budgetPools : [],
+    expenseCategories: Array.isArray(raw.expenseCategories)
+      ? raw.expenseCategories
+      : undefined,
   };
 }
 
@@ -319,11 +328,18 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
                 ? prevPools
                 : remote.budgetPools || prevPools;
 
+            const mergedExpenseCategories =
+              Array.isArray(remote.expenseCategories) &&
+              remote.expenseCategories.length > 0
+                ? remote.expenseCategories
+                : prev.expenseCategories;
+
             const next = normalizeLoadedState({
               version: prev.version,
               steps: createDefaultSteps(),
               rows: mergedRows,
               budgetPools: mergedPools,
+              expenseCategories: mergedExpenseCategories,
             });
             persistStateLocally(next);
             return next;
@@ -382,6 +398,10 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               (prev.budgetPools || []).length > 0
                 ? prev.budgetPools
                 : normalized.budgetPools,
+            expenseCategories:
+              (prev.expenseCategories || []).length > 0
+                ? prev.expenseCategories
+                : normalized.expenseCategories,
           };
         });
       }
@@ -601,6 +621,21 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     [commit],
   );
 
+  const saveExpenseCategories = useCallback(
+    (catalog: ExpenseCategoryGroup[]): boolean => {
+      return commit((draft) => {
+        draft.expenseCategories = catalog.map((g) => ({
+          id: g.id,
+          name: g.name.trim(),
+          subCategories: g.subCategories
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }));
+      });
+    },
+    [commit],
+  );
+
   const refreshFromStorage = useCallback(async () => {
     try {
       const idbState = await loadStateFromIndexedDB();
@@ -640,11 +675,24 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
           ? state.rows.filter((r) => isOverdueProject(r))
           : state.rows;
 
+    const poolById = new Map((state.budgetPools || []).map((p) => [p.id, p]));
     const q = viewFilter.q.trim().toLowerCase();
+    const filterCat = (viewFilter.expenseCategory || '').trim();
+    const filterSub = (viewFilter.expenseSubCategory || '').trim();
+
     const matched = baseRows
       .map((r) => ({ ...r, responsibleName: getResponsibleName(r) }))
-      .filter(
-        (r) =>
+      .filter((r) => {
+        const linkedPool = r.budgetPoolId ? poolById.get(r.budgetPoolId) : undefined;
+        const { category, subCategory } = resolveProjectExpenseClassification(
+          r,
+          poolById,
+        );
+        const effectiveCat = category || UNSPECIFIED_EXPENSE_CATEGORY;
+        if (filterCat && effectiveCat !== filterCat) return false;
+        if (filterSub && subCategory !== filterSub) return false;
+
+        return (
           (!viewFilter.year || Number(r.year) === Number(viewFilter.year)) &&
           (!viewFilter.status || r.status === viewFilter.status) &&
           (!q ||
@@ -653,13 +701,18 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               r.title,
               r.department,
               r.vendor,
+              r.expenseCategory,
+              r.expenseSubCategory,
+              linkedPool?.expenseCategory,
+              linkedPool?.expenseSubCategory,
               getResponsibleName(r),
               getUserName(r.assignee),
-            ].some((val) => String(val || '').toLowerCase().includes(q))),
-      );
+            ].some((val) => String(val || '').toLowerCase().includes(q)))
+        );
+      });
 
     return sortProjects(matched, viewFilter.sort, viewFilter.dir);
-  }, [page, state.rows, user.id, viewFilter]);
+  }, [page, state.rows, state.budgetPools, user.id, viewFilter]);
 
   const approveSarabanQueueItem = useCallback(
     async (item: SarabanQueueItem, overrideProjectId?: string): Promise<boolean> => {
@@ -840,6 +893,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     deleteProject,
     saveBudgetPool,
     deleteBudgetPool,
+    saveExpenseCategories,
     refreshFromStorage,
     refreshSarabanQueue,
     approveSarabanQueueItem,

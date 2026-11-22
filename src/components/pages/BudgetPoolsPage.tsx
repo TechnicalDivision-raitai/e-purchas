@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  FolderTree,
   Layers,
   Pencil,
   Plus,
@@ -11,13 +12,21 @@ import {
   X,
 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import { BUDGET_POOL_PRESETS, DEFAULT_DEPARTMENT } from '../../data/constants';
+import { DEFAULT_DEPARTMENT } from '../../data/constants';
 import {
   calculateBudgetPoolUsageList,
   getProjectPoolCommitment,
   validateBudgetPool,
   type BudgetPoolUsage,
 } from '../../domain/budgetPools';
+import {
+  findParentCategoryForSubCategory,
+  formatExpenseClassification,
+  getEffectiveExpenseCatalog,
+  getSubCategoriesForCategory,
+  suggestPoolNameFromSubCategory,
+  UNSPECIFIED_EXPENSE_CATEGORY,
+} from '../../domain/expenseCategories';
 import { getTotalVoucherAmount } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
 import type { BudgetPool } from '../../types/procurement';
@@ -28,6 +37,7 @@ import {
   collectNormalizedSuggestions,
 } from '../common/AutoSuggestInput';
 import { StatusBadge } from '../common/StatusBadge';
+import { ExpenseCategoriesModal } from '../modals/ExpenseCategoriesModal';
 
 interface BudgetPoolsPageProps {
   onCreatePurchaseFromPool: (poolId: string) => void;
@@ -39,6 +49,8 @@ interface PoolDraft {
   id: string;
   year: number;
   code: string;
+  expenseCategory: string;
+  expenseSubCategory: string;
   name: string;
   fund: string;
   department: string;
@@ -51,6 +63,8 @@ function createEmptyPoolDraft(defaultYear: number): PoolDraft {
     id: '',
     year: defaultYear,
     code: '',
+    expenseCategory: 'ค่าวัสดุ',
+    expenseSubCategory: '',
     name: '',
     fund: 'งบประมาณรายจ่าย',
     department: DEFAULT_DEPARTMENT,
@@ -77,6 +91,8 @@ export function BudgetPoolsPage({
   const budgetPools = state.budgetPools || [];
 
   const [expandedPoolIds, setExpandedPoolIds] = useState<Record<string, boolean>>({});
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
   const [draft, setDraft] = useState<PoolDraft>(() =>
@@ -87,7 +103,27 @@ export function BudgetPoolsPage({
   const [formError, setFormError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<BudgetPoolUsage | null>(null);
 
-  const usages = useMemo(
+  const expenseCatalog = useMemo(
+    () =>
+      getEffectiveExpenseCatalog(
+        state.expenseCategories,
+        state.rows,
+        budgetPools,
+      ),
+    [state.expenseCategories, state.rows, budgetPools],
+  );
+
+  const mainCategorySuggestions = useMemo(
+    () => expenseCatalog.map((g) => g.name),
+    [expenseCatalog],
+  );
+
+  const draftSubCategorySuggestions = useMemo(
+    () => getSubCategoriesForCategory(expenseCatalog, draft.expenseCategory),
+    [expenseCatalog, draft.expenseCategory],
+  );
+
+  const allUsages = useMemo(
     () =>
       calculateBudgetPoolUsageList(
         budgetPools,
@@ -97,6 +133,27 @@ export function BudgetPoolsPage({
       ),
     [budgetPools, state.rows, viewFilter.year, viewFilter.q],
   );
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const u of allUsages) {
+      const cat = u.pool.expenseCategory?.trim() || UNSPECIFIED_EXPENSE_CATEGORY;
+      map.set(cat, (map.get(cat) || 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => {
+      if (a[0] === UNSPECIFIED_EXPENSE_CATEGORY) return 1;
+      if (b[0] === UNSPECIFIED_EXPENSE_CATEGORY) return -1;
+      return b[1] - a[1];
+    });
+  }, [allUsages]);
+
+  const usages = useMemo(() => {
+    if (!categoryFilter) return allUsages;
+    return allUsages.filter((u) => {
+      const cat = u.pool.expenseCategory?.trim() || UNSPECIFIED_EXPENSE_CATEGORY;
+      return cat === categoryFilter;
+    });
+  }, [allUsages, categoryFilter]);
 
   const fundSuggestions = useMemo(
     () =>
@@ -157,6 +214,8 @@ export function BudgetPoolsPage({
       id: pool.id,
       year: pool.year,
       code: pool.code || '',
+      expenseCategory: pool.expenseCategory || '',
+      expenseSubCategory: pool.expenseSubCategory || '',
       name: pool.name,
       fund: pool.fund || '',
       department: pool.department || DEFAULT_DEPARTMENT,
@@ -175,6 +234,8 @@ export function BudgetPoolsPage({
       id: editingPoolId || `pool-${uid()}`,
       year: Number(draft.year) || currentFiscalYear(),
       code: draft.code.trim(),
+      expenseCategory: draft.expenseCategory.trim() || undefined,
+      expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
       name: draft.name.trim(),
       fund: draft.fund.trim() || 'งบประมาณรายจ่าย',
       department: draft.department.trim() || DEFAULT_DEPARTMENT,
@@ -337,16 +398,61 @@ export function BudgetPoolsPage({
           </div>
 
           {isAdmin && (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:from-[#0b387d] hover:to-[#135ba4]"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              เพิ่ม BUDGET DATA
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#9fc0e6] bg-white px-3 py-2 text-xs font-semibold text-[#134a96] transition hover:border-[#6da3df] hover:bg-[#e7f1fc]"
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+                จัดการหมวดค่าใช้จ่าย
+              </button>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:from-[#0b387d] hover:to-[#135ba4]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                เพิ่ม BUDGET DATA
+              </button>
+            </div>
           )}
         </div>
+
+        {categoryCounts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-[#dbe8f6] bg-[#f7fbff] px-5 py-3">
+            <span className="mr-1 text-[11px] font-semibold text-[#47678a]">
+              หมวดค่าใช้จ่าย:
+            </span>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('')}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${
+                categoryFilter === ''
+                  ? 'border-[#1150a6] bg-[#1150a6] text-white'
+                  : 'border-[#c5daf0] bg-white text-[#2b4d75] hover:bg-[#edf4fc]'
+              }`}
+            >
+              ทั้งหมด ({allUsages.length})
+            </button>
+            {categoryCounts.map(([cat, count]) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() =>
+                  setCategoryFilter((prev) => (prev === cat ? '' : cat))
+                }
+                className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  categoryFilter === cat
+                    ? 'border-[#1150a6] bg-[#1150a6] text-white'
+                    : 'border-[#c5daf0] bg-white text-[#2b4d75] hover:bg-[#edf4fc]'
+                }`}
+              >
+                {cat} ({count})
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="p-5">
           {usages.length === 0 ? (
@@ -409,6 +515,14 @@ export function BudgetPoolsPage({
                             {pool.code && (
                               <span className="font-mono-num text-[11px] font-semibold text-[#3f628a]">
                                 {pool.code}
+                              </span>
+                            )}
+                            {(pool.expenseCategory || pool.expenseSubCategory) && (
+                              <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10.5px] font-semibold text-[#1d4ed8]">
+                                {formatExpenseClassification(
+                                  pool.expenseCategory,
+                                  pool.expenseSubCategory,
+                                )}
                               </span>
                             )}
                             {usage.isOverBudget && (
@@ -702,10 +816,10 @@ export function BudgetPoolsPage({
           role="dialog"
           aria-modal="true"
           aria-labelledby="budget-pool-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/75 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
         >
-          <div className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
-            <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-5 py-4 text-white">
+          <div className="flex max-h-[90dvh] w-full max-w-[600px] flex-col overflow-hidden rounded-2xl border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-5 py-4 text-white">
               <div>
                 <h3 id="budget-pool-modal-title" className="text-base font-bold">
                   {editingPoolId ? 'แก้ไข BUDGET DATA' : 'เพิ่ม BUDGET DATA'}
@@ -718,33 +832,168 @@ export function BudgetPoolsPage({
                 type="button"
                 onClick={() => setModalOpen(false)}
                 aria-label="ปิดหน้าต่าง"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSavePool} className="space-y-4 p-5">
-              <div>
-                <div className="mb-1.5 text-[11px] font-semibold text-[#2c4c73]">
-                  เลือกชื่อหมวดที่ใช้บ่อย (คลิกเพื่อเติมอัตโนมัติ)
+            <form
+              onSubmit={handleSavePool}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="rounded-xl border border-[#c6daf0] bg-[#f4f8fe] p-3.5">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <span className="text-[11.5px] font-bold text-[#143d70]">
+                    จำแนกหมวดค่าใช้จ่ายและประเภทย่อย
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModalOpen(true)}
+                    className="text-[11px] font-semibold text-[#1355b0] hover:underline"
+                  >
+                    ตั้งค่าหมวด / เพิ่มประเภทย่อย
+                  </button>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {BUDGET_POOL_PRESETS.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setDraft((p) => ({ ...p, name: preset }))}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${
-                        draft.name === preset
-                          ? 'border-[#1251a8] bg-[#dbeafd] font-semibold text-[#0d3e85]'
-                          : 'border-[#bdd3ec] bg-white text-[#2f5178] hover:bg-[#edf4fc]'
-                      }`}
-                    >
-                      {preset}
-                    </button>
-                  ))}
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                    หมวดค่าใช้จ่ายหลัก
+                    <div className="mt-1.5">
+                      <AutoSuggestInput
+                        maxLength={120}
+                        placeholder="เช่น ค่าวัสดุ, ค่าครุภัณฑ์, ค่าใช้สอย"
+                        value={draft.expenseCategory}
+                        suggestions={mainCategorySuggestions}
+                        onChangeValue={(nextCat) =>
+                          setDraft((p) => {
+                            const validSubs = getSubCategoriesForCategory(
+                              expenseCatalog,
+                              nextCat,
+                            );
+                            const keepSub =
+                              !nextCat.trim() ||
+                              validSubs.length === 0 ||
+                              validSubs.some(
+                                (s) =>
+                                  s.toLowerCase() ===
+                                  p.expenseSubCategory.trim().toLowerCase(),
+                              );
+                            return {
+                              ...p,
+                              expenseCategory: nextCat,
+                              expenseSubCategory: keepSub
+                                ? p.expenseSubCategory
+                                : '',
+                            };
+                          })
+                        }
+                        className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                    ประเภทย่อย
+                    <div className="mt-1.5">
+                      <AutoSuggestInput
+                        maxLength={150}
+                        placeholder="เลือกหรือพิมพ์ประเภทย่อย เช่น วัสดุไฟฟ้าและวิทยุ"
+                        value={draft.expenseSubCategory}
+                        suggestions={draftSubCategorySuggestions}
+                        onChangeValue={(nextSub) =>
+                          setDraft((p) => {
+                            const inferredParent =
+                              !p.expenseCategory.trim() && nextSub.trim()
+                                ? findParentCategoryForSubCategory(
+                                    expenseCatalog,
+                                    nextSub,
+                                  )
+                                : null;
+                            const nextCat = inferredParent || p.expenseCategory;
+                            const autoName = suggestPoolNameFromSubCategory(
+                              nextCat,
+                              nextSub,
+                            );
+                            const prevAutoName = suggestPoolNameFromSubCategory(
+                              p.expenseCategory,
+                              p.expenseSubCategory,
+                            );
+                            const shouldUpdateName =
+                              !p.name.trim() || p.name.trim() === prevAutoName;
+                            return {
+                              ...p,
+                              expenseCategory: nextCat,
+                              expenseSubCategory: nextSub,
+                              name:
+                                shouldUpdateName && nextSub.trim()
+                                  ? autoName
+                                  : p.name,
+                            };
+                          })
+                        }
+                        className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      />
+                    </div>
+                  </label>
                 </div>
+
+                {draftSubCategorySuggestions.length > 0 && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 text-[10.5px] font-medium text-[#4a688a]">
+                      เลือกประเภทย่อยด่วนในหมวด{' '}
+                      <b className="text-[#123d73]">
+                        {draft.expenseCategory || 'ทั้งหมด'}
+                      </b>
+                      :
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {draftSubCategorySuggestions.slice(0, 10).map((sub) => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() =>
+                            setDraft((p) => {
+                              const inferredParent =
+                                !p.expenseCategory.trim()
+                                  ? findParentCategoryForSubCategory(
+                                      expenseCatalog,
+                                      sub,
+                                    )
+                                  : null;
+                              const nextCat = inferredParent || p.expenseCategory;
+                              const prevAuto = suggestPoolNameFromSubCategory(
+                                p.expenseCategory,
+                                p.expenseSubCategory,
+                              );
+                              const nextAuto = suggestPoolNameFromSubCategory(
+                                nextCat,
+                                sub,
+                              );
+                              return {
+                                ...p,
+                                expenseCategory: nextCat,
+                                expenseSubCategory: sub,
+                                name:
+                                  !p.name.trim() || p.name.trim() === prevAuto
+                                    ? nextAuto
+                                    : p.name,
+                              };
+                            })
+                          }
+                          className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                            draft.expenseSubCategory === sub
+                              ? 'border-[#1251a8] bg-[#dbeafd] font-semibold text-[#0d3e85]'
+                              : 'border-[#c5daf0] bg-white text-[#2f5178] hover:bg-[#edf4fc]'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
@@ -785,7 +1034,7 @@ export function BudgetPoolsPage({
                     type="text"
                     required
                     maxLength={250}
-                    placeholder="เช่น ค่าวัสดุสำนักงาน, ค่าวัสดุก่อสร้าง"
+                    placeholder="เช่น ค่าวัสดุสำนักงาน, ค่าวัสดุก่อสร้าง, ค่าวัสดุไฟฟ้าและวิทยุ"
                     value={draft.name}
                     onChange={(e) =>
                       setDraft((p) => ({ ...p, name: e.target.value }))
@@ -863,8 +1112,9 @@ export function BudgetPoolsPage({
                   {formError}
                 </div>
               )}
+              </div>
 
-              <div className="flex justify-end gap-2 border-t border-[#d6e4f4] pt-4">
+              <div className="flex shrink-0 justify-end gap-2 border-t border-[#c6daf0] bg-[#eef5fd] px-5 py-3.5">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
@@ -928,6 +1178,10 @@ export function BudgetPoolsPage({
           </div>
         </div>
       )}
+      <ExpenseCategoriesModal
+        open={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+      />
     </div>
   );
 }

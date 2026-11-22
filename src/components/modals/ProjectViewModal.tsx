@@ -23,6 +23,7 @@ import {
 } from 'react';
 import { PROJECT_TABS } from '../../data/constants';
 import { calculateBudgetPoolUsage } from '../../domain/budgetPools';
+import { resolveProjectExpenseClassification } from '../../domain/expenseCategories';
 import {
   canEditProject,
   createAcceptanceDraft,
@@ -96,6 +97,10 @@ export function ProjectViewModal({
   const linkedPoolUsage = linkedPool
     ? calculateBudgetPoolUsage(linkedPool, state.rows)
     : undefined;
+  const expenseClassification = resolveProjectExpenseClassification(
+    project,
+    new Map((state.budgetPools || []).map((p) => [p.id, p])),
+  );
   const acceptance = createAcceptanceDraft(details);
   const installmentSummary = getInstallmentSummary(details);
   const voucherEntries = installmentSummary.voucherEntries;
@@ -455,6 +460,8 @@ export function ProjectViewModal({
                       ['เลขทะเบียน', project.code],
                       ['ปีงบประมาณ', `พ.ศ. ${project.year}`],
                       ['ประเภทงาน', project.type],
+                      ['หมวดค่าใช้จ่าย', expenseClassification.category || '—'],
+                      ['ประเภทย่อย', expenseClassification.subCategory || '—'],
                       ['วิธีจัดซื้อจัดจ้าง', project.method],
                       ['แหล่งงบประมาณ', project.fund],
                       ...(linkedPool && linkedPoolUsage
