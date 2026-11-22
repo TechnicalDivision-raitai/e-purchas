@@ -2,7 +2,7 @@
  * Google Apps Script Backend
  * ระบบงานจัดซื้อจัดจ้าง • กองช่าง อบต.ไร่ใต้
  * รองรับ:
- * 1) ระบบจัดซื้อจัดจ้างเดิม: fetch, sync (_DATA_PROJECTS_JSON / _DATA_WORKFLOW_JSON), uploadFile
+ * 1) ระบบจัดซื้อจัดจ้าง: fetch, sync (_DATA_PROJECTS_JSON / _DATA_WORKFLOW_JSON / _DATA_BUDGET_POOLS_JSON / _DATA_EXPENSE_CATEGORIES_JSON), uploadFile
  * 2) รับข้อมูลเชื่อมโยงจากระบบสารบรรณ (SarabanProcurementQueue):
  *    - GET  ?action=getProcurementOptions&fiscalYear=all
  *    - POST action="pushProcurementQueue" (Content-Type: text/plain;charset=utf-8)
@@ -543,14 +543,27 @@ function handleSyncProjects_(body) {
       'ผู้รับผิดชอบ',
     ],
   ];
+  const poolLookup = {};
+  (hasBudgetPools ? budgetPools : readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET)).forEach(
+    function (p) {
+      if (p && p.id) poolLookup[String(p.id)] = p;
+    },
+  );
   rows.forEach(function (r) {
+    const linkedPool = r.budgetPoolId ? poolLookup[String(r.budgetPoolId)] : null;
+    const expCat = String(
+      r.expenseCategory || (linkedPool && linkedPool.expenseCategory) || '',
+    );
+    const expSub = String(
+      r.expenseSubCategory || (linkedPool && linkedPool.expenseSubCategory) || '',
+    );
     summaryRows.push([
       String(r.id || ''),
       String(r.code || ''),
       Number(r.year || 0),
       String(r.title || ''),
-      String(r.expenseCategory || ''),
-      String(r.expenseSubCategory || ''),
+      expCat,
+      expSub,
       String(r.status || ''),
       String(r.method || ''),
       Number(r.budget || 0),

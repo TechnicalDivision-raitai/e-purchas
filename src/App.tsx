@@ -48,7 +48,7 @@ function WorkspaceShell() {
     );
   }
 
-  const [pageTitle, pageSubtitle] = PAGE_TITLES[page];
+  const [pageTitle] = PAGE_TITLES[page];
 
   const handleOpenCreate = (budgetPoolId?: string) => {
     if (user.role !== 'admin') {
@@ -112,7 +112,6 @@ function WorkspaceShell() {
                   <h1 className="mt-1.5 text-[22px] font-semibold tracking-tight text-[#0f2a4a] sm:text-[25px]">
                     {pageTitle}
                   </h1>
-                  <p className="mt-1 text-xs text-[#4a6688]">{pageSubtitle}</p>
                 </div>
               </div>
 

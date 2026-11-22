@@ -69,11 +69,6 @@ export function ProjectsTablePanel({
               {rows.length} รายการ
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-[#4c6a8d]">
-            {compact
-              ? 'แสดงไม่เกิน 5 รายการตามลำดับที่เลือก'
-              : 'กดหัวคอลัมน์ เลขทะเบียน ปีงบฯ หรือชื่อโครงการ เพื่อเรียงข้อมูล · งานที่ปิดแล้วยังคงอยู่ในทะเบียน'}
-          </p>
         </div>
 
         {compact ? (
