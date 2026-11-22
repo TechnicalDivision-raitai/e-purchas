@@ -390,24 +390,36 @@ export function DashboardPage({
 
   return (
     <div className="space-y-4">
-      {/* 1) Clean Page Header Card (no banner image) */}
-      <section className="rounded-2xl border border-[#c6daf0] bg-white px-6 py-4 shadow-[0_2px_10px_rgba(15,42,74,0.04)] sm:px-7">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-[20px] font-bold tracking-tight text-[#0f489e] sm:text-[24px]">
-              ภาพรวมงานจัดซื้อจัดจ้าง
-            </h1>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#43648a] sm:text-[13px]">
-              <span>สถานะ ความคืบหน้า งบประมาณ และรายละเอียดการจัดซื้อจัดจ้าง</span>
-              <span aria-hidden="true" className="text-[#9cb9da]">
-                ·
-              </span>
-              <span className="font-bold text-[#1355b0] tabular-nums">
-                {viewFilter.year
-                  ? `ปีงบประมาณ พ.ศ. ${viewFilter.year}`
-                  : 'ทุกปีงบประมาณ'}
-              </span>
-            </p>
+      {/* 1) Page Header Card with Procurement Illustration Banner */}
+      <section className="relative flex min-h-[96px] items-center overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)] md:min-h-[112px] xl:min-h-[128px] 2xl:min-h-[138px]">
+        <div className="relative z-10 max-w-full px-6 py-4 sm:px-7 md:max-w-[58%] xl:max-w-[56%]">
+          <h1 className="text-[20px] font-bold tracking-tight text-[#0f489e] sm:text-[24px]">
+            ภาพรวมงานจัดซื้อจัดจ้าง
+          </h1>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#43648a] sm:text-[13px]">
+            <span>สถานะ ความคืบหน้า งบประมาณ และรายละเอียดการจัดซื้อจัดจ้าง</span>
+            <span aria-hidden="true" className="text-[#9cb9da]">
+              ·
+            </span>
+            <span className="font-bold text-[#1355b0] tabular-nums">
+              {viewFilter.year
+                ? `ปีงบประมาณ พ.ศ. ${viewFilter.year}`
+                : 'ทุกปีงบประมาณ'}
+            </span>
+          </p>
+        </div>
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden items-end justify-end pr-3 md:flex xl:pr-5"
+        >
+          <div className="relative flex items-end">
+            <img
+              src="/assets/aistudio/___________________________32d36733.png"
+              alt=""
+              className="h-[136px] w-auto max-w-none select-none object-contain object-bottom lg:h-[146px] xl:h-[170px] 2xl:h-[184px]"
+            />
+            <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white via-white/80 to-transparent lg:w-12 xl:w-10" />
           </div>
         </div>
       </section>
