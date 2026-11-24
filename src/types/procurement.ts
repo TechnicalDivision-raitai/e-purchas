@@ -86,6 +86,7 @@ export interface VoucherEntry {
   voucherAmount: number | '';
   paymentDate: string;
   voucherNotes: string;
+  sarabanQueueId?: string;
 }
 
 export interface AttachmentFile {
@@ -97,6 +98,7 @@ export interface AttachmentFile {
   data?: string; // Data URL (data:...;base64,...) for local/offline fallback
   url?: string; // Google Drive webViewLink / download URL
   driveFileId?: string;
+  sarabanQueueId?: string;
 }
 
 export interface StageDataEntry {

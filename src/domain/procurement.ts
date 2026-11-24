@@ -810,6 +810,17 @@ function appendUniqueNoteLine(existing: string | undefined, line: string): strin
   return `${current}\n${cleanLine}`;
 }
 
+function removeNoteLine(existing: string | undefined, line: string): string {
+  const cleanLine = line.trim();
+  const current = String(existing || '');
+  if (!cleanLine || !current.trim()) return current;
+  const remaining = current
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && l !== cleanLine);
+  return remaining.join('\n');
+}
+
 function appendSarabanAttachmentIfPresent(
   target: ProjectRecord,
   item: SarabanQueueItem,
@@ -833,6 +844,7 @@ function appendSarabanAttachmentIfPresent(
       size: Number(item.attachment?.fileSize || 0),
       category,
       url: fileUrl,
+      ...(item.queueId ? { sarabanQueueId: item.queueId } : {}),
     });
   }
 }
@@ -1007,6 +1019,7 @@ export function applySarabanQueueItemToProject(
           voucherNotes: subject
             ? appendUniqueNoteLine(existing.voucherNotes, subject)
             : existing.voucherNotes,
+          ...(item.queueId ? { sarabanQueueId: item.queueId } : {}),
         };
       } else {
         const fallbackRound =
@@ -1023,6 +1036,7 @@ export function applySarabanQueueItemToProject(
           voucherAmount: amount !== null ? amount : ('' as const),
           paymentDate: paidDateFromPayload,
           voucherNotes: subject,
+          ...(item.queueId ? { sarabanQueueId: item.queueId } : {}),
         });
       }
 
@@ -1067,4 +1081,207 @@ export function applySarabanQueueItemToProject(
   if (prevStatus !== target.status || !target.statusUpdatedAt) {
     target.statusUpdatedAt = new Date().toISOString();
   }
+}
+
+/**
+ * Reverts data and attachments that were previously imported into a ProjectRecord
+ * from a SarabanQueueItem. Only clears fields that match the queue item's values
+ * so manually entered data in other fields is preserved.
+ */
+export function revertSarabanQueueItemFromProject(
+  target: ProjectRecord,
+  item: SarabanQueueItem,
+): boolean {
+  let changed = false;
+  target.projectDetails ??= {};
+  target.files ??= [];
+  const d = target.projectDetails;
+  const payload = item.payload || {};
+  const meta = SARABAN_CATEGORY_META[item.docCategory];
+  const targetCategory: AttachmentCategory =
+    item.docCategory === 'general_approval'
+      ? 'general'
+      : meta?.targetTab || 'general';
+  const bookNo = String(item.bookNo || '').trim();
+  const bookDate = isValidIsoDate(item.bookDate) ? item.bookDate : '';
+  const subject = String(item.subject || '').trim();
+
+  // 1) Remove attachment imported from this queue item
+  const fileUrl = String(item.attachment?.fileUrl || '').trim();
+  const fileName = String(item.attachment?.fileName || '').trim();
+  if (target.files.length > 0) {
+    const beforeLen = target.files.length;
+    target.files = target.files.filter((f) => {
+      if (item.queueId && f.sarabanQueueId === item.queueId) return false;
+      if (fileUrl && f.url === fileUrl) return false;
+      if (fileName && f.category === targetCategory && f.name === fileName) {
+        return false;
+      }
+      return true;
+    });
+    if (target.files.length !== beforeLen) {
+      changed = true;
+    }
+  }
+
+  // 2) Revert category-specific fields that match this queue item
+  if (item.docCategory === 'tor_order') {
+    const orderNo = String(payload.orderNo || bookNo || '').trim();
+    const rawOrderDate = String(payload.orderDate || bookDate || '').trim();
+    const orderDate = isValidIsoDate(rawOrderDate) ? rawOrderDate : '';
+    const assigneeName = String(payload.assigneeName || '').trim();
+    const notes = String(payload.notes || '').trim();
+
+    if (orderNo && String(d.torOrderNo || '').trim() === orderNo) {
+      d.torOrderNo = '';
+      changed = true;
+    }
+    if (orderDate && String(d.torOrderDate || '').trim() === orderDate) {
+      d.torOrderDate = '';
+      changed = true;
+    }
+    if (assigneeName) {
+      if (String(target.responsibleName || '').trim() === assigneeName) {
+        target.responsibleName = '';
+        changed = true;
+      }
+      if (Array.isArray(d.torMembers) && d.torMembers.length > 0) {
+        const beforeCount = d.torMembers.length;
+        d.torMembers = d.torMembers.filter(
+          (m) => m.name.trim() !== assigneeName,
+        );
+        if (d.torMembers.length !== beforeCount) {
+          changed = true;
+        }
+      }
+    }
+    if (notes && d.torNotes) {
+      const nextNotes = removeNoteLine(d.torNotes, notes);
+      if (nextNotes !== d.torNotes) {
+        d.torNotes = nextNotes;
+        changed = true;
+      }
+    }
+  } else if (
+    item.docCategory === 'tor_approval' ||
+    item.docCategory === 'ref_price'
+  ) {
+    const refPrice = parsePositiveNumber(payload.refPrice);
+    const torAuthor = String(payload.torAuthor || '').trim();
+    const detailsText = String(payload.details || '').trim();
+
+    if (refPrice !== null && Number(target.reference || 0) === refPrice) {
+      target.reference = 0;
+      changed = true;
+    }
+    if (bookNo && String(d.torNo || '').trim() === bookNo) {
+      d.torNo = '';
+      changed = true;
+    }
+    if (bookDate) {
+      if (String(d.torPreparedDate || '').trim() === bookDate) {
+        d.torPreparedDate = '';
+        changed = true;
+      }
+      if (String(d.torDate || '').trim() === bookDate) {
+        d.torDate = '';
+        changed = true;
+      }
+      if (String(d.referenceDate || '').trim() === bookDate) {
+        d.referenceDate = '';
+        changed = true;
+      }
+    }
+    if (torAuthor && String(d.torAuthor || '').trim() === torAuthor) {
+      d.torAuthor = '';
+      changed = true;
+    }
+    if (detailsText && d.torNotes) {
+      const nextNotes = removeNoteLine(d.torNotes, detailsText);
+      if (nextNotes !== d.torNotes) {
+        d.torNotes = nextNotes;
+        changed = true;
+      }
+    }
+  } else if (item.docCategory === 'disbursement') {
+    const installment = parsePositiveInteger(payload.installment);
+    const voucherNo = String(payload.voucherNo || bookNo || '').trim();
+    const amount = parseNonNegativeNumber(payload.amount);
+    const entries = getEffectiveVoucherEntries(d);
+
+    const remaining = entries.filter((v) => {
+      if (item.queueId && v.sarabanQueueId === item.queueId) return false;
+      const matchVoucherNo = voucherNo && v.voucherNo.trim() === voucherNo;
+      const matchRound = installment !== null && v.round === installment;
+      const matchAmount =
+        amount !== null &&
+        v.voucherAmount !== '' &&
+        Number(v.voucherAmount) === amount;
+      const matchDate = bookDate && v.voucherDate === bookDate;
+      const matchSubject =
+        subject && String(v.voucherNotes || '').includes(subject);
+
+      if (matchVoucherNo && (installment === null || matchRound)) return false;
+      if (!voucherNo && matchRound && (matchAmount || matchDate || matchSubject)) {
+        return false;
+      }
+      if (
+        !voucherNo &&
+        installment === null &&
+        matchAmount &&
+        (matchDate || matchSubject)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (remaining.length !== entries.length) {
+      changed = true;
+      d.voucherEntries = remaining;
+
+      if (remaining.length === 0) {
+        d.voucherNo = '';
+        d.voucherDate = '';
+        d.voucherAmount = '';
+        d.paymentDate = '';
+        d.voucherNotes = '';
+      } else {
+        const latestVoucher = remaining[remaining.length - 1];
+        const hasAnyAmt = remaining.some(
+          (v) => v.voucherAmount !== '' && v.voucherAmount != null,
+        );
+        const allPaid = remaining.every((v) => Boolean(v.paymentDate));
+        d.voucherNo = remaining
+          .map((v) => v.voucherNo)
+          .filter(Boolean)
+          .join(', ');
+        d.voucherDate = latestVoucher?.voucherDate || '';
+        d.voucherAmount = hasAnyAmt
+          ? remaining.reduce(
+              (sum, v) => sum + (Number(v.voucherAmount) || 0),
+              0,
+            )
+          : '';
+        d.paymentDate =
+          allPaid && latestVoucher?.paymentDate
+            ? latestVoucher.paymentDate
+            : '';
+        d.voucherNotes = latestVoucher?.voucherNotes || '';
+      }
+    }
+  }
+
+  if (changed) {
+    const prevStatus = target.status;
+    const progress = deriveProgressFromTabs(target);
+    target.step = progress.step;
+    target.status = progress.status;
+    target.due = progress.due;
+    if (prevStatus !== target.status || !target.statusUpdatedAt) {
+      target.statusUpdatedAt = new Date().toISOString();
+    }
+  }
+
+  return changed;
 }

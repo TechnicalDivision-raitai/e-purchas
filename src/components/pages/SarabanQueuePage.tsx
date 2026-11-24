@@ -77,6 +77,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
   const [rejectTarget, setRejectTarget] = useState<SarabanQueueItem | null>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<SarabanQueueItem | null>(null);
+  const [deleteRevertProject, setDeleteRevertProject] = useState<boolean>(true);
   const [showScriptPanel, setShowScriptPanel] = useState<boolean>(false);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
@@ -178,7 +179,10 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
     if (!deleteTarget) return;
     setBusyKey(deleteTarget.queueId);
     try {
-      const ok = await removeSarabanQueueItem(deleteTarget);
+      const ok = await removeSarabanQueueItem(deleteTarget, {
+        revertProjectData:
+          deleteTarget.queueStatus === 'approved' ? deleteRevertProject : false,
+      });
       if (ok) {
         setDeleteTarget(null);
       }
@@ -537,7 +541,10 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
                         <button
                           type="button"
                           disabled={isBusy}
-                          onClick={() => setDeleteTarget(item)}
+                          onClick={() => {
+                            setDeleteRevertProject(item.queueStatus === 'approved');
+                            setDeleteTarget(item);
+                          }}
                           title="ลบรายการคิว"
                           aria-label={`ลบคิว ${item.queueId}`}
                           className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-[#d1dfee] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4b6584] transition hover:border-[#edb8b8] hover:bg-[#fff5f5] hover:text-[#a82c2c] disabled:opacity-45"
@@ -883,6 +890,23 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
               {getQueueDisplayTitle(deleteTarget)}) ออกจาก{' '}
               <span className="font-mono-num">SarabanProcurementQueue</span> หรือไม่?
             </p>
+            {deleteTarget.queueStatus === 'approved' && (
+              <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#ecd19a] bg-[#fff8ea] p-3 text-xs text-[#704a0b]">
+                <input
+                  type="checkbox"
+                  checked={deleteRevertProject}
+                  onChange={(e) => setDeleteRevertProject(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#1150a6]"
+                />
+                <span className="leading-relaxed">
+                  <strong className="block font-semibold text-[#5c3a06]">
+                    ล้างข้อมูลและไฟล์แนบที่รับเข้าโครงการจากคิวนี้ด้วย
+                  </strong>
+                  ระบบจะลบไฟล์แนบและล้างช่องข้อมูลที่นำเข้าจากคิวนี้ในโครงการปลายทางโดยอัตโนมัติ
+                  พร้อมซิงค์อัปเดตไปยัง Google Sheet
+                </span>
+              </label>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -897,7 +921,9 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
                 onClick={() => void handleConfirmDelete()}
                 className="rounded-lg bg-[#b82828] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#961d1d] disabled:opacity-45"
               >
-                ยืนยันลบคิว
+                {deleteTarget.queueStatus === 'approved' && deleteRevertProject
+                  ? 'ยืนยันลบคิวและล้างข้อมูล'
+                  : 'ยืนยันลบคิว'}
               </button>
             </div>
           </div>

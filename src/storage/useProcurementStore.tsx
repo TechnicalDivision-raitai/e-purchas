@@ -31,6 +31,7 @@ import {
   getUserName,
   isOverdueProject,
   normalizeLegacyStepId,
+  revertSarabanQueueItemFromProject,
   sortProjects,
 } from '../domain/procurement';
 import {
@@ -90,7 +91,10 @@ interface ProcurementContextValue {
     item: SarabanQueueItem,
     rejectReason: string,
   ) => Promise<boolean>;
-  removeSarabanQueueItem: (item: SarabanQueueItem) => Promise<boolean>;
+  removeSarabanQueueItem: (
+    item: SarabanQueueItem,
+    options?: { revertProjectData?: boolean },
+  ) => Promise<boolean>;
   showToast: (message: string) => void;
   appendHistory: (project: ProjectRecord, action: string) => void;
 }
@@ -840,11 +844,16 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
   );
 
   const removeSarabanQueueItem = useCallback(
-    async (item: SarabanQueueItem): Promise<boolean> => {
+    async (
+      item: SarabanQueueItem,
+      options?: { revertProjectData?: boolean },
+    ): Promise<boolean> => {
       if (user.role !== 'admin') {
         showToast('ไม่มีสิทธิ์ลบรายการคิว');
         return false;
       }
+      const shouldRevert =
+        options?.revertProjectData ?? item.queueStatus === 'approved';
       try {
         await deleteSarabanQueueItem(item.queueId, item.idempotencyKey);
         setSarabanQueue((prev) =>
@@ -856,7 +865,62 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               ),
           ),
         );
-        showToast(`ลบคิว ${item.queueId || item.idempotencyKey} ออกจากระบบแล้ว`);
+
+        let revertedProjectCodes: string[] = [];
+        if (shouldRevert) {
+          const meta = SARABAN_CATEGORY_META[item.docCategory];
+          const fileUrl = String(item.attachment?.fileUrl || '').trim();
+          commit((draft) => {
+            const matchedTargets = new Set<ProjectRecord>();
+            if (item.procurementId) {
+              const byId = draft.rows.find((r) => r.id === item.procurementId);
+              if (byId) matchedTargets.add(byId);
+            }
+            if (item.projectCode) {
+              const targetCode = normalizeCodeKey(item.projectCode);
+              const byCode = draft.rows.find(
+                (r) => normalizeCodeKey(r.code) === targetCode,
+              );
+              if (byCode) matchedTargets.add(byCode);
+            }
+            // Fallback scan: in case admin mapped this queue item to a different project during approval
+            for (const row of draft.rows) {
+              const hasTaggedFile = (row.files || []).some(
+                (f) =>
+                  (item.queueId && f.sarabanQueueId === item.queueId) ||
+                  (fileUrl && f.url === fileUrl),
+              );
+              const hasTaggedVoucher = (
+                row.projectDetails?.voucherEntries || []
+              ).some((v) => item.queueId && v.sarabanQueueId === item.queueId);
+              if (hasTaggedFile || hasTaggedVoucher) {
+                matchedTargets.add(row);
+              }
+            }
+
+            const codes: string[] = [];
+            for (const target of matchedTargets) {
+              const modified = revertSarabanQueueItemFromProject(target, item);
+              if (modified) {
+                codes.push(target.code);
+                target.history.push({
+                  at: new Date().toISOString(),
+                  by: user.name,
+                  action: `ยกเลิกข้อมูลที่เชื่อมโยงจากสารบรรณ (${meta?.label || item.docCategory}) หลังลบคิว ${item.queueId || item.idempotencyKey}`,
+                });
+              }
+            }
+            revertedProjectCodes = codes;
+          });
+        }
+
+        if (revertedProjectCodes.length > 0) {
+          showToast(
+            `ลบคิว ${item.queueId || item.idempotencyKey} และล้างข้อมูลที่เชื่อมโยงในโครงการ ${revertedProjectCodes.join(', ')} แล้ว`,
+          );
+        } else {
+          showToast(`ลบคิว ${item.queueId || item.idempotencyKey} ออกจากระบบแล้ว`);
+        }
         return true;
       } catch (err) {
         showToast(
@@ -865,7 +929,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [user.role, showToast],
+    [user.role, user.name, commit, showToast],
   );
 
   const value: ProcurementContextValue = {
