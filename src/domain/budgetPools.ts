@@ -275,16 +275,14 @@ function normalizeBudgetKey(value: string | undefined | null): string {
 }
 
 export interface BudgetPoolOverlapWarning {
-  type: 'same_name_other_scope' | 'same_hierarchy';
+  type: 'same_name_other_scope';
   pools: BudgetPool[];
   message: string;
 }
 
 export interface DuplicatePoolAnalysis {
   exactDuplicateGroups: Array<{ reason: string; pools: BudgetPool[] }>;
-  hierarchyOverlapGroups: Array<{ pathLabel: string; pools: BudgetPool[] }>;
   exactDuplicateIds: Set<string>;
-  overlapIds: Set<string>;
 }
 
 export function validateBudgetPool(
@@ -378,8 +376,6 @@ export function findBudgetPoolOverlapWarnings(
   const draftPlan = normalizeBudgetKey(draft.planName);
   const draftWork = normalizeBudgetKey(draft.workName);
   const draftBudgetType = normalizeBudgetKey(draft.budgetType);
-  const draftCat = normalizeBudgetKey(draft.expenseCategory);
-  const draftSub = normalizeBudgetKey(draft.expenseSubCategory);
 
   const othersInYear = existingPools.filter(
     (p) => p.id !== editingId && Number(p.year) === year,
@@ -402,28 +398,6 @@ export function findBudgetPoolOverlapWarnings(
     }
   }
 
-  if (draftCat && draftSub) {
-    const sameHierarchy = othersInYear.filter(
-      (p) =>
-        normalizeBudgetKey(p.planName) === draftPlan &&
-        normalizeBudgetKey(p.workName) === draftWork &&
-        normalizeBudgetKey(p.budgetType) === draftBudgetType &&
-        normalizeBudgetKey(p.expenseCategory) === draftCat &&
-        normalizeBudgetKey(p.expenseSubCategory) === draftSub &&
-        normalizeBudgetKey(p.name) !== draftName,
-    );
-    if (sameHierarchy.length > 0) {
-      const existingNames = sameHierarchy
-        .map((p) => `“${p.name}”`)
-        .join(', ');
-      warnings.push({
-        type: 'same_hierarchy',
-        pools: sameHierarchy,
-        message: `ลำดับขั้น 5 ระดับนี้มีวงเงินตั้งไว้แล้วในปีงบฯ ${year}: ${existingNames} — หากเป็นงบคนละรายการย่อยสามารถบันทึกต่อได้ แต่หากเป็นงบเดียวกันควรแก้ไขรายการเดิมเพื่อไม่ให้นับวงเงินซ้ำ`,
-      });
-    }
-  }
-
   return warnings;
 }
 
@@ -432,7 +406,6 @@ export function findDuplicatePoolGroups(
 ): DuplicatePoolAnalysis {
   const byCodeKey = new Map<string, BudgetPool[]>();
   const byExactScopeKey = new Map<string, BudgetPool[]>();
-  const byHierarchyKey = new Map<string, { pathLabel: string; pools: BudgetPool[] }>();
 
   for (const p of pools) {
     const year = Number(p.year) || 0;
@@ -448,34 +421,12 @@ export function findDuplicatePoolGroups(
     const planKey = normalizeBudgetKey(p.planName);
     const workKey = normalizeBudgetKey(p.workName);
     const budgetTypeKey = normalizeBudgetKey(p.budgetType);
-    const catKey = normalizeBudgetKey(p.expenseCategory);
-    const subKey = normalizeBudgetKey(p.expenseSubCategory);
 
     if (nameKey) {
       const k = `${year}::${nameKey}::${planKey}::${workKey}::${budgetTypeKey}`;
       const list = byExactScopeKey.get(k) || [];
       list.push(p);
       byExactScopeKey.set(k, list);
-    }
-
-    if (catKey && subKey) {
-      const k = `${year}::${planKey}::${workKey}::${budgetTypeKey}::${catKey}::${subKey}`;
-      const existing = byHierarchyKey.get(k);
-      const pathLabel = [
-        p.planName,
-        p.workName,
-        p.budgetType,
-        p.expenseCategory,
-        p.expenseSubCategory,
-      ]
-        .map((v) => String(v || '').trim())
-        .filter(Boolean)
-        .join(' › ');
-      if (existing) {
-        existing.pools.push(p);
-      } else {
-        byHierarchyKey.set(k, { pathLabel, pools: [p] });
-      }
     }
   }
 
@@ -501,22 +452,8 @@ export function findDuplicatePoolGroups(
     }
   }
 
-  const hierarchyOverlapGroups: Array<{ pathLabel: string; pools: BudgetPool[] }> = [];
-  const overlapIds = new Set<string>();
-  for (const entry of byHierarchyKey.values()) {
-    if (entry.pools.length > 1) {
-      const allExactSame = entry.pools.every((p) => exactDuplicateIds.has(p.id));
-      if (!allExactSame) {
-        hierarchyOverlapGroups.push(entry);
-        entry.pools.forEach((p) => overlapIds.add(p.id));
-      }
-    }
-  }
-
   return {
     exactDuplicateGroups,
-    hierarchyOverlapGroups,
     exactDuplicateIds,
-    overlapIds,
   };
 }

@@ -552,41 +552,23 @@ export function BudgetPoolsPage({
         )}
 
         <div className="p-5">
-          {(duplicateAnalysis.exactDuplicateGroups.length > 0 ||
-            duplicateAnalysis.hierarchyOverlapGroups.length > 0) && (
-            <div className="mb-4 rounded-xl border border-[#e8c27a] bg-[#fff9eb] px-4 py-3 text-xs text-[#6e4708]">
-              <div className="flex items-center gap-1.5 font-bold text-[#8a5404]">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-[#c97a08]" />
-                ตรวจพบรายการงบประมาณที่อาจซ้ำซ้อนใน BUDGET DATA
+          {duplicateAnalysis.exactDuplicateGroups.length > 0 && (
+            <div className="mb-4 rounded-xl border border-[#e6a8a8] bg-[#fff5f5] px-4 py-3 text-xs text-[#9b2c2c]">
+              <div className="flex items-center gap-1.5 font-bold text-[#a62626]">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#c93434]" />
+                ตรวจพบรายการงบประมาณที่มีชื่อหรือรหัสซ้ำซ้อนใน BUDGET DATA
               </div>
-              {duplicateAnalysis.exactDuplicateGroups.length > 0 && (
-                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[11px] text-[#9b2c2c]">
-                  {duplicateAnalysis.exactDuplicateGroups.map((g, idx) => (
-                    <li key={idx}>
-                      <b>{g.reason}</b> ({g.pools.length} รายการ:{' '}
-                      {g.pools
-                        .map((p) => `“${p.name}” ฿${formatMoney(p.allocatedBudget)}`)
-                        .join(', ')}
-                      )
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {duplicateAnalysis.hierarchyOverlapGroups.length > 0 && (
-                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[11px] text-[#7a4f0a]">
-                  {duplicateAnalysis.hierarchyOverlapGroups.map((g, idx) => (
-                    <li key={idx}>
-                      ลำดับขั้น 5 ระดับเดียวกัน ({g.pathLabel}) มี {g.pools.length} หมวด:{' '}
-                      {g.pools
-                        .map(
-                          (p) =>
-                            `“${p.name}” ปี ${p.year} (฿${formatMoney(p.allocatedBudget)})`,
-                        )
-                        .join(', ')}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[11px]">
+                {duplicateAnalysis.exactDuplicateGroups.map((g, idx) => (
+                  <li key={idx}>
+                    <b>{g.reason}</b> ({g.pools.length} รายการ:{' '}
+                    {g.pools
+                      .map((p) => `“${p.name}” ฿${formatMoney(p.allocatedBudget)}`)
+                      .join(', ')}
+                    )
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -667,12 +649,6 @@ export function BudgetPoolsPage({
                                 ชื่อ/รหัสซ้ำซ้อน
                               </span>
                             )}
-                            {!duplicateAnalysis.exactDuplicateIds.has(pool.id) &&
-                              duplicateAnalysis.overlapIds.has(pool.id) && (
-                                <span className="inline-flex items-center gap-1 rounded border border-[#ebd09c] bg-[#fff7e6] px-2 py-0.5 text-[10.5px] font-semibold text-[#8a5404]">
-                                  ลำดับขั้น 5 ระดับซ้ำกับหมวดอื่น
-                                </span>
-                              )}
                             {usage.isOverBudget && (
                               <span className="inline-flex items-center gap-1 rounded border border-[#f0b4b4] bg-[#fff0f0] px-2 py-0.5 text-[10.5px] font-semibold text-[#b52c2c]">
                                 <AlertTriangle className="h-3 w-3" />
