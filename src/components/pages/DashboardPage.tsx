@@ -290,9 +290,9 @@ export function DashboardPage({
         const isUnspecified =
           cat.isUnspecified && sub.name === UNSPECIFIED_EXPENSE_SUBCATEGORY;
         const label = isUnspecified
-          ? 'ยังไม่ระบุประเภทย่อย'
+          ? 'ยังไม่ระบุประเภทรายจ่าย'
           : sub.name === UNSPECIFIED_EXPENSE_SUBCATEGORY
-            ? `${cat.name} (ไม่ระบุย่อย)`
+            ? `${cat.name} (ไม่ระบุประเภทรายจ่าย)`
             : sub.name;
         const spent = sub.agreed + sub.reserved;
         items.push({
@@ -343,7 +343,7 @@ export function DashboardPage({
         ...head,
         {
           key: '__OTHER_SUBS__',
-          label: `ประเภทย่อยอื่น ๆ (${rest.length} ประเภท)`,
+          label: `ประเภทรายจ่ายอื่น ๆ (${rest.length} ประเภท)`,
           categoryName: '',
           subName: '',
           isUnspecified: true,
@@ -419,14 +419,14 @@ export function DashboardPage({
       >
         <label className="block rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
           <span className="block text-[11px] font-semibold text-[#5a7696]">
-            หมวดค่าใช้จ่าย
+            รายจ่าย
           </span>
           <select
             value={expenseCategoryFilter}
             onChange={(e) => setExpenseCategoryFilter(e.target.value)}
             className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
           >
-            <option value="">ทุกหมวดค่าใช้จ่าย</option>
+            <option value="">ทุกรายจ่าย</option>
             {expenseCatalog.map((group) => (
               <option key={group.id} value={group.name}>
                 {group.name}
@@ -664,14 +664,14 @@ export function DashboardPage({
           </div>
         </section>
 
-        {/* Card 2: เปรียบเทียบตามประเภทย่อย */}
+        {/* Card 2: เปรียบเทียบตามประเภทรายจ่าย */}
         <section className="flex flex-col overflow-hidden rounded-2xl border border-[#c6daf0] bg-white shadow-[0_2px_10px_rgba(15,42,74,0.04)]">
           <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-[#1150a6] to-[#1b6ec9] px-5 py-3.5 text-white">
             <h2 className="text-[14px] font-bold tracking-tight">
-              เปรียบเทียบตามประเภทย่อย
+              เปรียบเทียบตามประเภทรายจ่าย
             </h2>
             <span className="shrink-0 whitespace-nowrap font-mono-num text-[11.5px] font-semibold text-[#dceeff] tabular-nums">
-              {subCategoryComparison.totalCount} ประเภทย่อย
+              {subCategoryComparison.totalCount} ประเภทรายจ่าย
             </span>
           </div>
 
@@ -771,7 +771,7 @@ export function DashboardPage({
                 })
               ) : (
                 <div className="rounded-xl border border-dashed border-[#d2e2f3] bg-[#f7fbff] px-4 py-6 text-center text-xs text-[#607d9d]">
-                  ยังไม่มีข้อมูลประเภทย่อยในชุดข้อมูลนี้
+                  ยังไม่มีข้อมูลประเภทรายจ่ายในชุดข้อมูลนี้
                 </div>
               )}
             </div>
@@ -885,10 +885,10 @@ export function DashboardPage({
             </span>
             <div>
               <h2 className="text-[15px] font-bold text-[#0f2a4a]">
-                สรุปตามหมวดค่าใช้จ่ายและประเภทย่อย
+                สรุปตามรายจ่ายและประเภทรายจ่าย
               </h2>
               <p className="mt-0.5 text-[11px] text-[#4c6b8e] tabular-nums">
-                แยกงบประมาณและวงเงินตกลงซื้อ/จ้างตามโครงสร้างหมวดค่าใช้จ่าย ({expenseHierarchy.length} หมวด · {totalSubCategoryCount} ประเภทย่อย)
+                แยกงบประมาณและวงเงินตกลงซื้อ/จ้างตามโครงสร้างรายจ่าย ({expenseHierarchy.length} รายจ่าย · {totalSubCategoryCount} ประเภทรายจ่าย)
               </p>
             </div>
           </div>
@@ -900,7 +900,7 @@ export function DashboardPage({
                 onClick={() => setExpenseCategoryFilter('')}
                 className="rounded-lg border border-[#c5daf0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#31557d] hover:bg-[#edf4fc]"
               >
-                ล้างตัวกรองหมวด
+                ล้างตัวกรองรายจ่าย
               </button>
             )}
             <button
@@ -918,7 +918,7 @@ export function DashboardPage({
                 className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[#aecae9] bg-white px-3 py-1.5 text-xs font-semibold text-[#1150a6] transition hover:border-[#6ea2df] hover:bg-[#e7f1fc]"
               >
                 <FolderTree className="h-3.5 w-3.5" />
-                จัดการหมวดค่าใช้จ่าย
+                จัดการรายจ่าย / ประเภทรายจ่าย
               </button>
             )}
           </div>
@@ -927,7 +927,7 @@ export function DashboardPage({
         <div className="p-4 sm:p-5">
           {expenseHierarchy.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[#c8dcf2] bg-[#f7fbff] px-5 py-7 text-center text-xs text-[#567496]">
-              ยังไม่มีรายการที่จำแนกหมวดค่าใช้จ่ายในชุดข้อมูลนี้ — เพิ่มหมวดงบประมาณแบบ 5 ระดับในหน้า BUDGET DATA และผูกโครงการที่หน้าทะเบียนโครงการ
+              ยังไม่มีรายการที่จำแนกรายจ่ายในชุดข้อมูลนี้ — เพิ่มหมวดงบประมาณแบบ 5 ระดับในหน้า BUDGET DATA และผูกโครงการที่หน้าทะเบียนโครงการ
             </div>
           ) : (
             <div className="space-y-3">
@@ -978,7 +978,7 @@ export function DashboardPage({
                               {cat.name}
                             </span>
                             <span className="rounded bg-white px-2 py-0.5 text-[10.5px] font-semibold text-[#3f628a] ring-1 ring-[#d1e2f4] tabular-nums">
-                              {cat.subCategories.length} ประเภทย่อย ·{' '}
+                              {cat.subCategories.length} ประเภทรายจ่าย ·{' '}
                               {cat.projectCount} รายการ
                               {cat.poolCount > 0
                                 ? ` · ${cat.poolCount} BUDGET DATA`

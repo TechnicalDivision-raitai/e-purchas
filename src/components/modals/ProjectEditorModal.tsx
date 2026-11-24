@@ -1719,7 +1719,7 @@ export function ProjectEditorModal({
                           className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1355b0] hover:underline"
                         >
                           <FolderTree className="h-3 w-3" />
-                          จัดการหมวดค่าใช้จ่าย
+                          จัดการรายจ่าย / ประเภทรายจ่าย
                         </button>
                       </div>
 
@@ -1828,7 +1828,7 @@ export function ProjectEditorModal({
                               />
                               <AutoSuggestInput
                                 maxLength={120}
-                                placeholder="4. หมวด (เช่น ค่าวัสดุ, ค่าครุภัณฑ์)"
+                                placeholder="4. รายจ่าย (เช่น ค่าวัสดุ, ค่าครุภัณฑ์)"
                                 value={quickPoolCategory}
                                 suggestions={mainCategorySuggestions}
                                 onChangeValue={(nextCat) => {
@@ -1853,7 +1853,7 @@ export function ProjectEditorModal({
                               />
                               <AutoSuggestInput
                                 maxLength={150}
-                                placeholder="5. ประเภทค่าใช้จ่าย (เช่น วัสดุก่อสร้าง, วัสดุสำนักงาน)"
+                                placeholder="5. ประเภทรายจ่าย (เช่น วัสดุก่อสร้าง, วัสดุสำนักงาน)"
                                 value={quickPoolSubCategory}
                                 suggestions={quickPoolSubSuggestions}
                                 onChangeValue={(nextSub) => {
@@ -2024,11 +2024,11 @@ export function ProjectEditorModal({
                                           <span>งบ: {selectedBudgetPool.budgetType}</span>
                                         )}
                                         {selectedBudgetPool.expenseCategory && (
-                                          <span>หมวด: {selectedBudgetPool.expenseCategory}</span>
+                                          <span>รายจ่าย: {selectedBudgetPool.expenseCategory}</span>
                                         )}
                                         {selectedBudgetPool.expenseSubCategory && (
                                           <span>
-                                            ประเภทค่าใช้จ่าย:{' '}
+                                            ประเภทรายจ่าย:{' '}
                                             {selectedBudgetPool.expenseSubCategory}
                                           </span>
                                         )}

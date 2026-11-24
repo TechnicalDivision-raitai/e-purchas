@@ -567,7 +567,7 @@ export function BudgetPoolsPage({
               </span>
             </div>
             <p className="mt-1 text-[11px] text-[#4c6a8d]">
-              แยกวงเงินตามลำดับ แผนงาน › งาน › งบ › หมวด › ประเภทค่าใช้จ่าย · กันยอดจากราคากลางและคืนส่วนต่างอัตโนมัติเมื่อบันทึกวงเงินตกลง
+              แยกวงเงินตามลำดับ แผนงาน › งาน › งบ › รายจ่าย › ประเภทรายจ่าย · กันยอดจากราคากลางและคืนส่วนต่างอัตโนมัติเมื่อบันทึกวงเงินตกลง
             </p>
           </div>
 
@@ -614,7 +614,7 @@ export function BudgetPoolsPage({
                   className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#9fc0e6] bg-white px-3 py-2 text-xs font-semibold text-[#134a96] transition hover:border-[#6da3df] hover:bg-[#e7f1fc]"
                 >
                   <FolderTree className="h-3.5 w-3.5" />
-                  จัดการหมวดค่าใช้จ่าย
+                  จัดการรายจ่าย / ประเภทรายจ่าย
                 </button>
                 <button
                   type="button"
@@ -640,7 +640,7 @@ export function BudgetPoolsPage({
         {categoryCounts.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-[#dbe8f6] bg-[#f7fbff] px-5 py-3">
             <span className="mr-1 text-[11px] font-semibold text-[#47678a]">
-              หมวดค่าใช้จ่าย:
+              รายจ่าย:
             </span>
             <button
               type="button"
@@ -724,7 +724,7 @@ export function BudgetPoolsPage({
                 ยังไม่มีรายการ BUDGET DATA
               </h3>
               <p className="mt-1 max-w-[560px] text-xs leading-relaxed text-[#4f6d90]">
-                สร้างหมวดวงเงินงบประมาณประจำปี (แผนงาน / งาน / งบ / หมวด / ประเภทค่าใช้จ่าย)
+                สร้างหมวดวงเงินงบประมาณประจำปี (แผนงาน / งาน / งบ / รายจ่าย / ประเภทรายจ่าย)
                 ก่อนบันทึกโครงการจัดซื้อจัดจ้าง เพื่อให้โครงการทุกงานผูกตัดยอดจากหมวดงบประมาณของปีนั้นอย่างเป็นระบบ
               </p>
               {isAdmin && (
@@ -1351,7 +1351,7 @@ export function BudgetPoolsPage({
                   {editingPoolId ? 'แก้ไข BUDGET DATA' : 'เพิ่ม BUDGET DATA'}
                 </h3>
                 <p className="mt-0.5 text-[11px] text-[#b8dcff]">
-                  จำแนกตามลำดับขั้น 5 ระดับ: แผนงาน › งาน › งบ › หมวด › ประเภทค่าใช้จ่าย
+                  จำแนกตามลำดับขั้น 5 ระดับ: แผนงาน › งาน › งบ › รายจ่าย › ประเภทรายจ่าย
                 </p>
               </div>
               <button
@@ -1379,7 +1379,7 @@ export function BudgetPoolsPage({
                     onClick={() => setCategoryModalOpen(true)}
                     className="text-[11px] font-semibold text-[#1355b0] hover:underline"
                   >
-                    ตั้งค่าหมวด / เพิ่มประเภทค่าใช้จ่าย
+                    ตั้งค่ารายจ่าย / เพิ่มประเภทรายจ่าย
                   </button>
                 </div>
 
@@ -1433,7 +1433,7 @@ export function BudgetPoolsPage({
                   </label>
 
                   <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                    4. หมวด
+                    4. รายจ่าย
                     <div className="mt-1.5">
                       <AutoSuggestInput
                         maxLength={120}
@@ -1469,7 +1469,7 @@ export function BudgetPoolsPage({
                   </label>
 
                   <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                    5. ประเภทค่าใช้จ่าย
+                    5. ประเภทรายจ่าย
                     <div className="mt-1.5">
                       <AutoSuggestInput
                         maxLength={150}
@@ -1516,7 +1516,7 @@ export function BudgetPoolsPage({
                 {draftSubCategorySuggestions.length > 0 && (
                   <div className="mt-3">
                     <div className="mb-1.5 text-[10.5px] font-medium text-[#4a688a]">
-                      เลือกประเภทย่อยด่วนในหมวด{' '}
+                      เลือกประเภทรายจ่ายด่วนในรายจ่าย{' '}
                       <b className="text-[#123d73]">
                         {draft.expenseCategory || 'ทั้งหมด'}
                       </b>

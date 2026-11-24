@@ -463,8 +463,8 @@ export function ProjectViewModal({
                       ['แผนงาน', budgetHierarchy.planName || '—'],
                       ['งาน', budgetHierarchy.workName || '—'],
                       ['งบ', budgetHierarchy.budgetType || '—'],
-                      ['หมวดค่าใช้จ่าย', budgetHierarchy.expenseCategory || '—'],
-                      ['ประเภทค่าใช้จ่าย', budgetHierarchy.expenseSubCategory || '—'],
+                      ['รายจ่าย', budgetHierarchy.expenseCategory || '—'],
+                      ['ประเภทรายจ่าย', budgetHierarchy.expenseSubCategory || '—'],
                       ['วิธีจัดซื้อจัดจ้าง', project.method],
                       ['แหล่งงบประมาณ', project.fund],
                       ...(linkedPool && linkedPoolUsage

@@ -77,7 +77,7 @@ export function Toolbar() {
         {page !== 'budgets' && (
           <>
             <label className="block text-[11px] font-semibold text-[#2c4b70]">
-              หมวดค่าใช้จ่าย
+              รายจ่าย
               <select
                 value={selectedCategory}
                 onChange={(e) =>
@@ -88,7 +88,7 @@ export function Toolbar() {
                 }
                 className="mt-1.5 block min-h-[38px] min-w-[155px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
               >
-                <option value="">ทุกหมวดค่าใช้จ่าย</option>
+                <option value="">ทุกรายจ่าย</option>
                 {expenseCatalog.map((group) => (
                   <option key={group.id} value={group.name}>
                     {group.name}
@@ -102,7 +102,7 @@ export function Toolbar() {
 
             {subCategoryOptions.length > 0 && (
               <label className="block text-[11px] font-semibold text-[#2c4b70]">
-                ประเภทย่อย
+                ประเภทรายจ่าย
                 <select
                   value={selectedSubCategory}
                   onChange={(e) =>
@@ -110,7 +110,7 @@ export function Toolbar() {
                   }
                   className="mt-1.5 block min-h-[38px] min-w-[165px] rounded-md border border-[#b6cde6] bg-white px-3 py-1.5 text-xs font-medium text-[#173659] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
                 >
-                  <option value="">ทุกประเภทย่อย</option>
+                  <option value="">ทุกประเภทรายจ่าย</option>
                   {subCategoryOptions.map((sub) => (
                     <option key={sub} value={sub}>
                       {sub}
@@ -148,8 +148,8 @@ export function Toolbar() {
               onChange={(e) => updateViewFilter({ q: e.target.value })}
               placeholder={
                 page === 'budgets'
-                  ? 'ค้นหาชื่อหมวดวงเงิน หมวดค่าใช้จ่าย ประเภทย่อย…'
-                  : 'ค้นหาเลขทะเบียน ชื่อโครงการ หมวดค่าใช้จ่าย หรือประเภทย่อย…'
+                  ? 'ค้นหาชื่อหมวดวงเงิน รายจ่าย ประเภทรายจ่าย…'
+                  : 'ค้นหาเลขทะเบียน ชื่อโครงการ รายจ่าย หรือประเภทรายจ่าย…'
               }
               className="block min-h-[38px] w-full rounded-md border border-[#b6cde6] bg-white py-1.5 pr-3 pl-8 text-xs text-[#173659] placeholder:text-[#7690ad] focus:border-[#1c64c7] focus:outline-none focus:ring-2 focus:ring-[#a8d1ff]"
             />

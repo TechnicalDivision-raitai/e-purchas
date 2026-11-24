@@ -8,8 +8,8 @@ import type { BudgetPoolUsage } from './budgetPools';
 import { isFinancialEligible } from './excel';
 import { getTotalVoucherAmount } from './procurement';
 
-export const UNSPECIFIED_EXPENSE_CATEGORY = 'ยังไม่ระบุหมวดค่าใช้จ่าย';
-export const UNSPECIFIED_EXPENSE_SUBCATEGORY = 'ไม่ระบุประเภทย่อย';
+export const UNSPECIFIED_EXPENSE_CATEGORY = 'ยังไม่ระบุรายจ่าย';
+export const UNSPECIFIED_EXPENSE_SUBCATEGORY = 'ไม่ระบุประเภทรายจ่าย';
 
 function normalizeLabel(value: string | undefined | null): string {
   return String(value || '')

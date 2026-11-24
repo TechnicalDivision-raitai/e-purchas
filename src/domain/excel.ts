@@ -56,8 +56,8 @@ export const EXCEL_SCHEMA: Record<string, string[]> = {
     'รายละเอียดโครงการ',
     'สถานะ',
     'ขั้นตอน',
-    'หมวดค่าใช้จ่าย',
-    'ประเภทย่อย',
+    'รายจ่าย',
+    'ประเภทรายจ่าย',
     'หมวด BUDGET DATA',
     'แผนงาน',
     'งาน',
@@ -166,8 +166,8 @@ export function buildExcelTables(
         'แผนงาน',
         'งาน',
         'งบ',
-        'หมวด',
-        'ประเภทค่าใช้จ่าย',
+        'รายจ่าย',
+        'ประเภทรายจ่าย',
         'ชื่อหมวดวงเงิน',
         'แหล่งงบประมาณ',
         'หน่วยงาน',
@@ -485,6 +485,12 @@ export function previewExcelImport(
     }
 
     const expectedHeaders = EXCEL_SCHEMA[sheetName];
+    const legacyGeneralHeaders =
+      sheetName === 'ข้อมูลทั่วไป'
+        ? expectedHeaders.map((h, idx) =>
+            idx === 12 ? 'หมวดค่าใช้จ่าย' : idx === 13 ? 'ประเภทย่อย' : h,
+          )
+        : null;
     const headerCandidates =
       sheetName === 'สั่งซื้อสั่งจ้าง'
         ? [expectedHeaders, expectedHeaders.slice(0, 7)]
@@ -494,6 +500,13 @@ export function previewExcelImport(
               expectedHeaders.slice(0, 15),
               expectedHeaders.slice(0, 14),
               expectedHeaders.slice(0, 12),
+              ...(legacyGeneralHeaders
+                ? [
+                    legacyGeneralHeaders,
+                    legacyGeneralHeaders.slice(0, 15),
+                    legacyGeneralHeaders.slice(0, 14),
+                  ]
+                : []),
             ]
           : [expectedHeaders];
     const headerMatches =
