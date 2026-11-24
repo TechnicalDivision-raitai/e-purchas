@@ -488,8 +488,20 @@ export function ProjectViewModal({
                               'money',
                             ],
                           ] as Array<[string, string, 'money'?]>)),
+                      ...(details.approvalDocNo
+                        ? ([['เลขที่บันทึกขออนุมัติ', details.approvalDocNo]] as [
+                            string,
+                            string,
+                          ][])
+                        : []),
                       ['ผู้รับผิดชอบ', getResponsibleName(project)],
                       ['วันที่ขออนุมัติ', formatThaiDate(project.start)],
+                      ...(details.approvalNotes
+                        ? ([['หมายเหตุขั้นตอนขออนุมัติ', details.approvalNotes]] as [
+                            string,
+                            string,
+                          ][])
+                        : []),
                       ['รายละเอียดโครงการ/รายการจัดซื้อจัดจ้าง', project.notes],
                     ])}
                     {renderCategoryFiles('general')}

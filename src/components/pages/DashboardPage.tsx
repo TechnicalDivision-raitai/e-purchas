@@ -44,9 +44,14 @@ interface StatusBucket {
 const STATUS_BUCKETS: StatusBucket[] = [
   {
     id: 'prepare',
-    label: 'รอ TOR / รออนุมัติ',
+    label: 'รอขออนุมัติ / รอ TOR',
     color: '#f59e0b',
-    statuses: ['รอจัดทำTOR และราคากลาง', 'รอดำเนินการ', 'รออนุมัติ'],
+    statuses: [
+      'รอขออนุมัติโครงการ',
+      'รอจัดทำTOR และราคากลาง',
+      'รอดำเนินการ',
+      'รออนุมัติ',
+    ],
   },
   {
     id: 'in_progress',
@@ -81,6 +86,8 @@ function getStatusBadgeClass(status: string): string {
     case 'อยู่ระหว่างสั่งซื้อสั่งจ้าง':
     case 'กำลังดำเนินการ':
       return 'bg-[#d1fae5] text-[#047857] border border-[#a7f3d0]';
+    case 'รอขออนุมัติโครงการ':
+      return 'bg-[#eef2ff] text-[#3730a3] border border-[#c7d2fe]';
     case 'รออนุมัติ':
     case 'รอจัดทำTOR และราคากลาง':
     case 'รอดำเนินการ':

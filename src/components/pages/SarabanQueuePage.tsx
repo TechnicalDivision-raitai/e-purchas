@@ -204,8 +204,8 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
     if (item.subject?.trim()) return item.subject.trim();
     if (item.docCategory === 'general_approval') {
       return item.attachment?.fileName
-        ? `เอกสารแนบขออนุมัติ: ${item.attachment.fileName}`
-        : 'แนบไฟล์ขออนุมัติ (ข้อมูลทั่วไป)';
+        ? `ขออนุมัติโครงการ: ${item.attachment.fileName}`
+        : 'ขออนุมัติโครงการ (ขั้นตอนการขออนุมัติ)';
     }
     if (item.attachment?.fileName) {
       return `${SARABAN_CATEGORY_META[item.docCategory]?.label || item.docCategory} · ${item.attachment.fileName}`;
@@ -218,10 +218,42 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
     const chips: Array<{ label: string; value: string; highlight?: boolean }> = [];
 
     if (item.docCategory === 'general_approval') {
-      chips.push({
-        label: 'การอัปเดต',
-        value: 'แนบเฉพาะไฟล์เข้าหน้าข้อมูลทั่วไป (ไม่แก้ไขข้อมูลตั้งต้น)',
-      });
+      const respName = String(p.responsibleName || p.assigneeName || '').trim();
+      const appDate = String(p.approvalDate || '').trim();
+      const appNotes = String(p.notes || p.details || '').trim();
+      const isStrictAttachmentOnly =
+        p.attachmentOnly === true &&
+        !respName &&
+        !appDate &&
+        !item.bookNo &&
+        !appNotes;
+
+      if (isStrictAttachmentOnly) {
+        chips.push({
+          label: 'การอัปเดต',
+          value: 'แนบเฉพาะไฟล์เข้าหน้าข้อมูลทั่วไป (ไม่แก้ไขข้อมูลตั้งต้น)',
+        });
+      } else {
+        chips.push({
+          label: 'การอัปเดต',
+          value: 'บันทึกขั้นตอนการขออนุมัติ · เข้ากล่องงานของฉัน',
+          highlight: true,
+        });
+        if (respName) {
+          chips.push({ label: 'ผู้รับผิดชอบ', value: respName });
+        }
+        if (appDate && appDate !== item.bookDate) {
+          chips.push({ label: 'วันที่ขออนุมัติ', value: formatThaiDate(appDate) });
+        } else if (!appDate && item.bookDate) {
+          chips.push({
+            label: 'วันที่ขออนุมัติ',
+            value: formatThaiDate(item.bookDate),
+          });
+        }
+        if (appNotes) {
+          chips.push({ label: 'หมายเหตุ', value: appNotes });
+        }
+      }
     } else if (item.docCategory === 'tor_order') {
       const orderNo = String(p.orderNo || '').trim();
       const orderDate = String(p.orderDate || '').trim();
@@ -433,7 +465,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
                   : 'ยังไม่มีรายการคิวในตัวกรองนี้'}
             </p>
             <p className="mt-1 text-xs text-[#597494]">
-              รองรับเอกสาร 4 หมวดหมู่: ขออนุมัติ (ข้อมูลทั่วไป), แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง, จัดทำ TOR และราคากลาง และฎีกาเบิกจ่ายเงิน
+              รองรับเอกสาร 4 หมวดหมู่: ขออนุมัติโครงการ (ขั้นตอนการขออนุมัติ), แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง, จัดทำ TOR และราคากลาง และฎีกาเบิกจ่ายเงิน
             </p>
           </div>
         ) : (
@@ -775,7 +807,7 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
                 </option>
                 {state.rows.map((r) => (
                   <option key={r.id} value={r.id}>
-                    [{r.code}] {r.title}
+                    [{r.code}] {r.title} ({r.status})
                   </option>
                 ))}
               </select>
@@ -785,9 +817,9 @@ export function SarabanQueuePage({ onViewProject }: SarabanQueuePageProps) {
               <p className="mt-2 text-[11px] leading-relaxed text-[#4b688a]">
                 {inspectTarget.docCategory === 'general_approval' ? (
                   <>
-                    ระบบจะแนบเฉพาะไฟล์เข้าแท็บ{' '}
+                    ระบบจะอัปเดตข้อมูล<b>ขั้นตอนการขออนุมัติ</b> (เลขที่บันทึกขออนุมัติ, วันที่ขออนุมัติ, ผู้รับผิดชอบ) และแนบไฟล์เข้าแท็บ{' '}
                     <b className="text-[#0d825b]">“{inspectTargetTabLabel}”</b>{' '}
-                    ของโครงการที่เลือกโดย<b>ไม่แก้ไขข้อมูลตั้งต้นใดๆ</b> พร้อมส่งสถานะ{' '}
+                    โดย<b>ไม่แก้ไขข้อมูลตั้งต้นของโครงการ</b> พร้อมปรับสถานะเข้าสู่<b>กล่องงานของฉัน</b> และส่งสถานะ{' '}
                     <b className="text-[#0d825b]">approved</b> กลับไปยังระบบสารบรรณ
                   </>
                 ) : (

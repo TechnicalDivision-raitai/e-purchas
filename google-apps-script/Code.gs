@@ -62,6 +62,7 @@ const QUEUE_HEADERS = [
 ];
 
 const STATUS_TO_CODE = {
+  'รอขออนุมัติโครงการ': 'waiting_project_approval',
   'รอจัดทำTOR และราคากลาง': 'tor_preparation',
   'อยู่ระหว่างสั่งซื้อสั่งจ้าง': 'ordering',
   'รอดำเนินการ': 'pending',
@@ -874,6 +875,11 @@ function handleGetProcurementOptions_(fiscalYearParam) {
         statusLabel: thaiStatus,
         method: String(r.method || ''),
         budget: effectiveBudget,
+        responsibleName: String(r.responsibleName || ''),
+        startDate: String(r.start || ''),
+        approvalDocNo: String(
+          (r.projectDetails && r.projectDetails.approvalDocNo) || '',
+        ),
         budgetPoolId: String(r.budgetPoolId || ''),
         budgetPoolName: String((linkedPool && linkedPool.name) || ''),
         planName: String(r.planName || (linkedPool && linkedPool.planName) || ''),

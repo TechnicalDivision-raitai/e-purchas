@@ -634,7 +634,11 @@ export function previewExcelImport(
       responsibleName: String(a[7] || '').trim(),
       start: String(a[8] || ''),
       notes: String(a[9] || ''),
-      status: (a[10] || existingRecord?.status || 'รอจัดทำTOR และราคากลาง') as ProjectStatus,
+      status: (a[10] ||
+        existingRecord?.status ||
+        (String(a[7] || '').trim() || String(a[8] || '').trim()
+          ? 'รอจัดทำTOR และราคากลาง'
+          : 'รอขออนุมัติโครงการ')) as ProjectStatus,
       step: normalizeLegacyStepId(String(a[11] || existingRecord?.step || steps[0].id)),
       planName: rowPlan || matchedPool?.planName || undefined,
       workName: rowWork || matchedPool?.workName || undefined,
@@ -1001,7 +1005,7 @@ export function previewExcelImport(
         }
       }
 
-      if (!r.responsibleName || r.responsibleName.length > 200) {
+      if (r.responsibleName && r.responsibleName.length > 200) {
         throw new Error('ต้องกรอกผู้รับผิดชอบไม่เกิน 200 ตัวอักษร');
       }
 

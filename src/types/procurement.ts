@@ -23,6 +23,7 @@ export type ProjectTabId =
   | 'voucher';
 
 export type ProjectStatus =
+  | 'รอขออนุมัติโครงการ'
   | 'รอจัดทำTOR และราคากลาง'
   | 'อยู่ระหว่างสั่งซื้อสั่งจ้าง'
   | 'รอดำเนินการ'
@@ -116,6 +117,9 @@ export interface HistoryEntry {
 }
 
 export interface ProjectDetails {
+  approvalDocNo?: string;
+  approvalNotes?: string;
+  approvalSarabanQueueId?: string;
   torOrderNo?: string;
   torOrderDate?: string;
   torPreparedDate?: string;
@@ -318,6 +322,8 @@ export interface SarabanAttachment {
 export interface SarabanQueuePayload {
   attachmentOnly?: boolean;
   targetSection?: string;
+  approvalDate?: string;
+  responsibleName?: string;
   orderNo?: string;
   orderDate?: string;
   assigneeName?: string;

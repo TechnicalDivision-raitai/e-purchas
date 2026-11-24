@@ -184,15 +184,19 @@ export function ProjectsTablePanel({
                   </td>
                   <td className="px-3.5 py-3.5 align-middle">
                     <div className="leading-snug text-[#1c3c61]">
-                      {getResponsibleName(r)
-                        .trim()
-                        .split(/\s+/)
-                        .map((part, idx, arr) => (
-                          <span key={idx} className="inline-block">
-                            {part}
-                            {idx < arr.length - 1 ? '\u00A0' : ''}
-                          </span>
-                        ))}
+                      {getResponsibleName(r).trim() ? (
+                        getResponsibleName(r)
+                          .trim()
+                          .split(/\s+/)
+                          .map((part, idx, arr) => (
+                            <span key={idx} className="inline-block">
+                              {part}
+                              {idx < arr.length - 1 ? '\u00A0' : ''}
+                            </span>
+                          ))
+                      ) : (
+                        <span className="text-[#8ba4c0]">—</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3.5 py-3.5 text-right align-middle font-mono-num font-medium text-[#153152]">

@@ -57,9 +57,21 @@ export function hasTorTabData(
   );
 }
 
+export function hasApprovalData(
+  project: Pick<ProjectRecord, 'responsibleName' | 'start'> & {
+    projectDetails?: Pick<ProjectDetails, 'approvalDocNo'>;
+  },
+): boolean {
+  return Boolean(
+    String(project.responsibleName || '').trim() ||
+      String(project.start || '').trim() ||
+      String(project.projectDetails?.approvalDocNo || '').trim(),
+  );
+}
+
 export function getInboxProjects(rows: ProjectRecord[], userId: string): ProjectRecord[] {
   return rows.filter(
-    (r) => r.assignee === userId && isActiveProject(r) && hasTorTabData(r),
+    (r) => r.assignee === userId && isActiveProject(r) && hasApprovalData(r),
   );
 }
 
@@ -183,6 +195,8 @@ export function getStatusUpdatedAt(
 export function deriveProgressFromTabs(
   project: Pick<
     ProjectRecord,
+    | 'responsibleName'
+    | 'start'
     | 'reference'
     | 'agreed'
     | 'docNo'
@@ -199,6 +213,7 @@ export function deriveProgressFromTabs(
   const details = project.projectDetails || {};
   const files = project.files || [];
 
+  const hasApproval = hasApprovalData(project);
   const hasTor = hasTorTabData(project);
 
   const summary = getInstallmentSummary(details);
@@ -258,7 +273,7 @@ export function deriveProgressFromTabs(
     return { step, status: project.status, due };
   }
 
-  let status: ProjectStatus = 'รอจัดทำTOR และราคากลาง';
+  let status: ProjectStatus = 'รอขออนุมัติโครงการ';
   if (hasVoucher) {
     if (summary.installmentCount > 0) {
       if (summary.activeRounds.length === 0) {
@@ -320,6 +335,8 @@ export function deriveProgressFromTabs(
     }
   } else if (hasTor) {
     status = 'อยู่ระหว่างสั่งซื้อสั่งจ้าง';
+  } else if (hasApproval) {
+    status = 'รอจัดทำTOR และราคากลาง';
   }
 
   return { step, status, due };
@@ -357,11 +374,15 @@ export function validateProject(
     }
   }
 
-  if (!isValidIsoDate(project.start)) {
+  if (project.start && !isValidIsoDate(project.start)) {
     errors.push('วันที่ขออนุมัติไม่ถูกต้อง');
   }
 
-  if (project.due && (!isValidIsoDate(project.due) || project.due < String(project.start || ''))) {
+  if (
+    project.due &&
+    (!isValidIsoDate(project.due) ||
+      (Boolean(project.start) && project.due < String(project.start || '')))
+  ) {
     errors.push('กำหนดเสร็จต้องไม่ก่อนวันเริ่ม');
   }
 
@@ -886,14 +907,39 @@ export function applySarabanQueueItemToProject(
   const bookDate = isValidIsoDate(item.bookDate) ? item.bookDate : '';
   const subject = String(item.subject || '').trim();
 
-  // 1. general_approval: แนบเฉพาะไฟล์เข้าหน้าข้อมูลทั่วไปเท่านั้น ห้ามแก้ไขข้อมูลตั้งต้นใดๆ ของโครงการ
+  // 1. general_approval: เชื่อมโยงข้อมูล "ขั้นตอนการขออนุมัติ" และแนบไฟล์เข้าหน้าข้อมูลทั่วไป (ไม่แก้ไขข้อมูลตั้งต้นของโครงการ)
   if (item.docCategory === 'general_approval') {
-    appendSarabanAttachmentIfPresent(target, item, 'general');
-    return;
-  }
+    const rawApprovalDate = String(payload.approvalDate || bookDate || '').trim();
+    const approvalDate = isValidIsoDate(rawApprovalDate) ? rawApprovalDate : '';
+    const responsibleName = String(
+      payload.responsibleName || payload.assigneeName || '',
+    ).trim();
+    const approvalNotes = String(payload.notes || payload.details || '').trim();
+    const isStrictAttachmentOnly =
+      payload.attachmentOnly === true &&
+      !responsibleName &&
+      !approvalDate &&
+      !bookNo &&
+      !approvalNotes;
 
-  // 2. tor_order: แต่งตั้งผู้รับผิดชอบ TOR และราคากลาง (อัปเดตเฉพาะช่องที่มีค่าส่งมาจริง)
-  if (item.docCategory === 'tor_order') {
+    if (!isStrictAttachmentOnly) {
+      if (responsibleName) {
+        target.responsibleName = responsibleName;
+      }
+      if (approvalDate) {
+        target.start = approvalDate;
+      }
+      if (bookNo) {
+        d.approvalDocNo = bookNo;
+      }
+      if (approvalNotes) {
+        d.approvalNotes = appendUniqueNoteLine(d.approvalNotes, approvalNotes);
+      }
+      if (item.queueId) {
+        d.approvalSarabanQueueId = item.queueId;
+      }
+    }
+  } else if (item.docCategory === 'tor_order') {
     const orderNo = String(payload.orderNo || bookNo || '').trim();
     const rawOrderDate = String(payload.orderDate || bookDate || '').trim();
     const orderDate = isValidIsoDate(rawOrderDate) ? rawOrderDate : '';
@@ -1125,7 +1171,41 @@ export function revertSarabanQueueItemFromProject(
   }
 
   // 2) Revert category-specific fields that match this queue item
-  if (item.docCategory === 'tor_order') {
+  if (item.docCategory === 'general_approval') {
+    const rawApprovalDate = String(payload.approvalDate || bookDate || '').trim();
+    const approvalDate = isValidIsoDate(rawApprovalDate) ? rawApprovalDate : '';
+    const responsibleName = String(
+      payload.responsibleName || payload.assigneeName || '',
+    ).trim();
+    const approvalNotes = String(payload.notes || payload.details || '').trim();
+
+    if (approvalDate && String(target.start || '').trim() === approvalDate) {
+      target.start = '';
+      changed = true;
+    }
+    if (
+      responsibleName &&
+      String(target.responsibleName || '').trim() === responsibleName
+    ) {
+      target.responsibleName = '';
+      changed = true;
+    }
+    if (bookNo && String(d.approvalDocNo || '').trim() === bookNo) {
+      d.approvalDocNo = '';
+      changed = true;
+    }
+    if (approvalNotes && d.approvalNotes) {
+      const nextNotes = removeNoteLine(d.approvalNotes, approvalNotes);
+      if (nextNotes !== d.approvalNotes) {
+        d.approvalNotes = nextNotes;
+        changed = true;
+      }
+    }
+    if (item.queueId && d.approvalSarabanQueueId === item.queueId) {
+      d.approvalSarabanQueueId = '';
+      changed = true;
+    }
+  } else if (item.docCategory === 'tor_order') {
     const orderNo = String(payload.orderNo || bookNo || '').trim();
     const rawOrderDate = String(payload.orderDate || bookDate || '').trim();
     const orderDate = isValidIsoDate(rawOrderDate) ? rawOrderDate : '';

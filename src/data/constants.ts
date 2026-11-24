@@ -35,6 +35,7 @@ export const ADMIN_PASSWORD =
   '12345';
 
 export const STATUSES: ProjectStatus[] = [
+  'รอขออนุมัติโครงการ',
   'รอจัดทำTOR และราคากลาง',
   'อยู่ระหว่างสั่งซื้อสั่งจ้าง',
   'กำลังดำเนินการ',
@@ -78,7 +79,7 @@ export const PAGE_TITLES: Record<PageId, [string, string]> = {
   ],
   inbox: [
     'กล่องงานของฉัน',
-    'แสดงโครงการที่เริ่มบันทึกข้อมูลในแท็บ 2. TOR และราคากลาง แล้ว · ไม่รวมเสร็จสิ้นและยกเลิก',
+    'แสดงโครงการที่มีการบันทึกขั้นตอนการขออนุมัติแล้ว · ไม่รวมเสร็จสิ้นและยกเลิก',
   ],
   register: [
     'ทะเบียนโครงการทั้งหมด',
@@ -266,8 +267,8 @@ export const SARABAN_CATEGORY_META: Record<
   }
 > = {
   general_approval: {
-    label: 'ขออนุมัติ (ข้อมูลทั่วไป)',
-    groupLabel: 'ข้อมูลทั่วไป',
+    label: 'ขออนุมัติโครงการ (ขั้นตอนการขออนุมัติ)',
+    groupLabel: 'ขั้นตอนการขออนุมัติ',
     targetTab: 'general',
   },
   tor_order: {

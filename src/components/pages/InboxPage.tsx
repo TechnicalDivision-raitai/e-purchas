@@ -268,15 +268,19 @@ export function InboxPage({
                   </td>
 
                   <td className="px-3 py-4 align-middle text-[12px] font-medium leading-snug text-[#1b3a5e]">
-                    {getResponsibleName(project)
-                      .trim()
-                      .split(/\s+/)
-                      .map((part, idx, arr) => (
-                        <span key={idx} className="inline-block">
-                          {part}
-                          {idx < arr.length - 1 ? '\u00A0' : ''}
-                        </span>
-                      ))}
+                    {getResponsibleName(project).trim() ? (
+                      getResponsibleName(project)
+                        .trim()
+                        .split(/\s+/)
+                        .map((part, idx, arr) => (
+                          <span key={idx} className="inline-block">
+                            {part}
+                            {idx < arr.length - 1 ? '\u00A0' : ''}
+                          </span>
+                        ))
+                    ) : (
+                      <span className="text-[#8ba4c0]">—</span>
+                    )}
                   </td>
 
                   <td className="px-3 py-4 align-middle text-center">
@@ -370,7 +374,7 @@ export function InboxPage({
               ยังไม่มีงานสำคัญที่รอดำเนินการในกล่องงาน
             </p>
             <p className="mt-1 text-xs text-[#5b7899]">
-              โครงการที่เพิ่งเพิ่มเฉพาะข้อมูลทั่วไปจะเก็บไว้ในทะเบียนโครงการก่อน และจะเข้ามาแสดงที่นี่เมื่อเริ่มบันทึกข้อมูลในแท็บ 2. TOR และราคากลาง
+              โครงการที่เพิ่งเพิ่มเฉพาะข้อมูลทั่วไปจะเก็บไว้ในทะเบียนโครงการก่อน และจะเข้ามาแสดงที่นี่เมื่อมีการบันทึกขั้นตอนการขออนุมัติ
             </p>
             {isAdmin && onCreateProject && (
               <button

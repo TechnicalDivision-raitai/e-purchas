@@ -99,7 +99,6 @@ import {
   formatThaiDate,
   getFiscalYearOptions,
   isValidIsoDate,
-  todayBangkok,
   uid,
 } from '../../utils/date';
 import { formatMoney } from '../../utils/format';
@@ -194,7 +193,7 @@ function createDraftFromRecord(
     reference: old ? String(old.reference ?? 0) : '0',
     agreed: old ? String(old.agreed ?? 0) : '0',
     responsibleName: old ? getResponsibleName(old) : '',
-    start: old ? old.start : todayBangkok(),
+    start: old ? old.start : '',
     notes: old ? old.notes : '',
     docNo: old ? old.docNo : '',
     docDate: old ? old.docDate : '',
@@ -215,7 +214,7 @@ function createDraftFromRecord(
       old?.status === 'ยกเลิก'
         ? 'manual'
         : 'auto',
-    manualStatus: old?.status || 'รอจัดทำTOR และราคากลาง',
+    manualStatus: old?.status || 'รอขออนุมัติโครงการ',
   };
 }
 
@@ -557,6 +556,8 @@ export function ProjectEditorModal({
     () =>
       deriveProgressFromTabs(
         {
+          responsibleName: draft.responsibleName,
+          start: draft.start,
           reference: Number(draft.reference) || 0,
           agreed: Number(draft.agreed) || 0,
           docNo: draft.docNo,
@@ -572,7 +573,7 @@ export function ProjectEditorModal({
             voucherEntries: draft.voucherEntries,
           },
           files: draft.files,
-          status: existing?.status || 'รอจัดทำTOR และราคากลาง',
+          status: existing?.status || 'รอขออนุมัติโครงการ',
         },
         true,
       ),
@@ -895,7 +896,7 @@ export function ProjectEditorModal({
         docDate: draft.docDate,
         vendor: draft.vendor.trim(),
         notes: draft.notes,
-        status: existing?.status || 'รอจัดทำTOR และราคากลาง',
+        status: existing?.status || 'รอขออนุมัติโครงการ',
         step: existing?.step || state.steps[0]?.id || 's1',
         ack: existing?.ack ?? false,
         stageData: existing?.stageData || {},
@@ -1725,7 +1726,7 @@ export function ProjectEditorModal({
 
                       <div className="mt-2.5 space-y-2.5">
                         <div className="flex flex-wrap items-end gap-2">
-                          <label className="min-w-[240px] flex-1 text-[11px] font-semibold text-[#1d4069]">
+                          <label className="min-w-[240px] max-w-full flex-1 text-[11px] font-semibold text-[#1d4069]">
                             เลือกหมวด BUDGET DATA (ปีงบฯ {draft.year}) *
                             <select
                               required
@@ -1747,7 +1748,7 @@ export function ProjectEditorModal({
                                     chosen?.expenseSubCategory || '',
                                 }));
                               }}
-                              className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
+                              className="mt-1 min-h-[38px] w-full max-w-full truncate rounded-lg border border-[#a8c4e4] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
                             >
                               <option value="">
                                 {yearBudgetPools.length > 0
@@ -1755,19 +1756,23 @@ export function ProjectEditorModal({
                                   : `— ยังไม่มีหมวด BUDGET DATA ปีงบฯ ${draft.year} —`}
                               </option>
                               {yearBudgetPools.map((bp) => {
-                                const usage = calculateBudgetPoolUsage(
-                                  bp,
-                                  state.rows,
-                                  existing?.id,
-                                );
-                                const clsText = formatBudgetHierarchyPath(bp);
+                                const hasSameName =
+                                  yearBudgetPools.filter(
+                                    (other) =>
+                                      other.name.trim() === bp.name.trim(),
+                                  ).length > 1;
+                                const disambiguator = hasSameName
+                                  ? bp.expenseSubCategory ||
+                                    bp.workName ||
+                                    bp.planName ||
+                                    bp.budgetType ||
+                                    ''
+                                  : '';
                                 return (
                                   <option key={bp.id} value={bp.id}>
                                     {bp.code ? `${bp.code} · ` : ''}
                                     {bp.name}
-                                    {clsText ? ` [${clsText}]` : ''} (คงเหลือ ฿{' '}
-                                    {formatMoney(usage.remainingAmount)} / ฿{' '}
-                                    {formatMoney(bp.allocatedBudget)})
+                                    {disambiguator ? ` (${disambiguator})` : ''}
                                   </option>
                                 );
                               })}
@@ -1971,11 +1976,12 @@ export function ProjectEditorModal({
                             0,
                             Number(selectedBudgetPool.allocatedBudget || 0),
                           );
+                          const remainingBeforeProject =
+                            allocated - selectedPoolOtherUsage.usedAmount;
                           const projectedRemaining =
-                            allocated -
-                            selectedPoolOtherUsage.usedAmount -
-                            currentItemPoolAmount;
+                            remainingBeforeProject - currentItemPoolAmount;
                           const isOver = projectedRemaining < -0.005;
+                          const isBeforeOver = remainingBeforeProject < -0.005;
                           const poolClassification =
                             formatBudgetHierarchyPath(selectedBudgetPool);
                           return (
@@ -2008,45 +2014,18 @@ export function ProjectEditorModal({
                                         </span>
                                       </div>
                                     )}
-                                    {(selectedBudgetPool.planName ||
-                                      selectedBudgetPool.workName ||
-                                      selectedBudgetPool.budgetType ||
-                                      selectedBudgetPool.expenseCategory ||
-                                      selectedBudgetPool.expenseSubCategory) && (
-                                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#4b6b8f]">
-                                        {selectedBudgetPool.planName && (
-                                          <span>แผนงาน: {selectedBudgetPool.planName}</span>
-                                        )}
-                                        {selectedBudgetPool.workName && (
-                                          <span>งาน: {selectedBudgetPool.workName}</span>
-                                        )}
-                                        {selectedBudgetPool.budgetType && (
-                                          <span>งบ: {selectedBudgetPool.budgetType}</span>
-                                        )}
-                                        {selectedBudgetPool.expenseCategory && (
-                                          <span>รายจ่าย: {selectedBudgetPool.expenseCategory}</span>
-                                        )}
-                                        {selectedBudgetPool.expenseSubCategory && (
-                                          <span>
-                                            ประเภทรายจ่าย:{' '}
-                                            {selectedBudgetPool.expenseSubCategory}
-                                          </span>
-                                        )}
-                                        {selectedBudgetPool.fund && (
-                                          <span>แหล่งงบ: {selectedBudgetPool.fund}</span>
-                                        )}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                                 <span className="shrink-0 font-mono-num font-bold">
-                                  คงเหลือหลังรายการนี้:{' '}
+                                  งบประมาณคงเหลือ:{' '}
                                   <span
                                     className={
-                                      isOver ? 'text-[#b52c2c]' : 'text-[#0f6b47]'
+                                      isBeforeOver
+                                        ? 'text-[#b52c2c]'
+                                        : 'text-[#0f6b47]'
                                     }
                                   >
-                                    ฿ {formatMoney(projectedRemaining)}
+                                    ฿ {formatMoney(remainingBeforeProject)}
                                   </span>
                                 </span>
                               </div>
@@ -2111,39 +2090,6 @@ export function ProjectEditorModal({
                     </label>
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      ผู้รับผิดชอบ *
-                      <div className="mt-1.5">
-                        <AutoSuggestInput
-                          required
-                          maxLength={200}
-                          placeholder="กรอกชื่อผู้รับผิดชอบ"
-                          value={draft.responsibleName}
-                          suggestions={suggestionPools.people}
-                          onChangeValue={(nextVal) =>
-                            setDraft((p) => ({
-                              ...p,
-                              responsibleName: nextVal,
-                            }))
-                          }
-                          className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
-                        />
-                      </div>
-                    </label>
-
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      วันที่ขออนุมัติ *
-                      <input
-                        type="date"
-                        required
-                        value={draft.start}
-                        onChange={(e) =>
-                          setDraft((p) => ({ ...p, start: e.target.value }))
-                        }
-                        className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                      />
-                    </label>
-
-                    <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       สถานะโครงการ
                       <select
                         value={
@@ -2180,10 +2126,6 @@ export function ProjectEditorModal({
                       </select>
                     </label>
 
-                    <p className="col-span-full text-[11px] text-[#8aa0b7]">
-                      ชื่อผู้รับผิดชอบไม่เปลี่ยนบัญชีที่ได้รับงานในกล่องงานของฉัน
-                    </p>
-
                     <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
                       รายละเอียดโครงการ/รายการจัดซื้อจัดจ้าง
                       <textarea
@@ -2196,6 +2138,92 @@ export function ProjectEditorModal({
                         className="mt-1.5 w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] p-3 text-xs font-normal text-[#132d4c]"
                       />
                     </label>
+
+                    <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#f4f8fe] p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#d4e3f3] pb-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-bold text-[#123d73]">
+                            ขั้นตอนการขออนุมัติ
+                          </span>
+                          <span className="rounded-md border border-[#bfd5ee] bg-white px-2 py-0.5 text-[10.5px] font-semibold text-[#3f628a]">
+                            ไม่บังคับกรอก
+                          </span>
+                          {draft.details.approvalSarabanQueueId && (
+                            <span className="rounded-md border border-[#9cd8bd] bg-[#dff5eb] px-2 py-0.5 font-mono-num text-[10.5px] font-semibold text-[#116947]">
+                              เชื่อมโยงสารบรรณ: {draft.details.approvalSarabanQueueId}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-medium text-[#47688d]">
+                          เมื่อบันทึกข้อมูลส่วนนี้ โครงการจะเข้าสู่หน้ากล่องงานของฉัน (หากยังไม่กรอก สถานะจะเป็น “รอขออนุมัติโครงการ”)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                          เลขที่บันทึกขออนุมัติ
+                          <input
+                            type="text"
+                            maxLength={120}
+                            placeholder="เช่น นม 74603/..."
+                            value={draft.details.approvalDocNo || ''}
+                            onChange={(e) =>
+                              updateDetail('approvalDocNo', e.target.value)
+                            }
+                            className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                          />
+                        </label>
+
+                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                          ผู้รับผิดชอบ
+                          <div className="mt-1.5">
+                            <AutoSuggestInput
+                              maxLength={200}
+                              placeholder="กรอกชื่อผู้รับผิดชอบ"
+                              value={draft.responsibleName}
+                              suggestions={suggestionPools.people}
+                              onChangeValue={(nextVal) =>
+                                setDraft((p) => ({
+                                  ...p,
+                                  responsibleName: nextVal,
+                                }))
+                              }
+                              className="min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                          วันที่ขออนุมัติ
+                          <input
+                            type="date"
+                            value={draft.start}
+                            onChange={(e) =>
+                              setDraft((p) => ({ ...p, start: e.target.value }))
+                            }
+                            className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-white px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
+                          />
+                        </label>
+                      </div>
+
+                      <label className="mt-3 block text-[11.5px] font-semibold text-[#1d4069]">
+                        หมายเหตุขั้นตอนขออนุมัติ
+                        <input
+                          type="text"
+                          maxLength={500}
+                          placeholder="บันทึกเพิ่มเติมหรือหมายเหตุจากระบบสารบรรณ (ถ้ามี)"
+                          value={draft.details.approvalNotes || ''}
+                          onChange={(e) =>
+                            updateDetail('approvalNotes', e.target.value)
+                          }
+                          className="mt-1.5 min-h-[38px] w-full rounded-[10px] border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                        />
+                      </label>
+
+                      <p className="mt-2.5 text-[11px] text-[#6d87a4]">
+                        รองรับการเชื่อมโยงข้อมูลอัตโนมัติจากระบบสารบรรณ (หมวดขออนุมัติโครงการ) · ชื่อผู้รับผิดชอบไม่เปลี่ยนบัญชีที่ได้รับงานในกล่องงานของฉัน
+                      </p>
+                    </div>
 
                     {renderCategoryUpload(
                       'general',
