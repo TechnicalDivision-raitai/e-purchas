@@ -19,6 +19,7 @@ import {
   VIEW_STORAGE_KEY,
 } from '../data/constants';
 import { SARABAN_CATEGORY_META } from '../data/constants';
+import { validateBudgetPool } from '../domain/budgetPools';
 import {
   resolveProjectExpenseClassification,
   UNSPECIFIED_EXPENSE_CATEGORY,
@@ -209,6 +210,15 @@ function mergeLocalFileBlobs(
 }
 
 function normalizeLoadedState(raw: ProcurementState): ProcurementState {
+  const rawPools = Array.isArray(raw.budgetPools) ? raw.budgetPools : [];
+  const dedupedPools: BudgetPool[] = [];
+  const seenPoolIds = new Set<string>();
+  for (const pool of rawPools) {
+    if (!pool?.id || seenPoolIds.has(pool.id)) continue;
+    seenPoolIds.add(pool.id);
+    dedupedPools.push(pool);
+  }
+
   return {
     version: raw.version || 2,
     steps: createDefaultSteps(),
@@ -216,7 +226,7 @@ function normalizeLoadedState(raw: ProcurementState): ProcurementState {
       ...r,
       step: normalizeLegacyStepId(r.step),
     })),
-    budgetPools: Array.isArray(raw.budgetPools) ? raw.budgetPools : [],
+    budgetPools: dedupedPools,
     expenseCategories: Array.isArray(raw.expenseCategories)
       ? raw.expenseCategories
       : undefined,
@@ -586,8 +596,16 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
         if (!Array.isArray(draft.budgetPools)) {
           draft.budgetPools = [];
         }
-        const nowIso = new Date().toISOString();
         const idx = draft.budgetPools.findIndex((p) => p.id === pool.id);
+        const validationErrors = validateBudgetPool(
+          pool,
+          draft.budgetPools,
+          idx >= 0 ? pool.id : undefined,
+        );
+        if (validationErrors.length > 0) {
+          throw new Error(validationErrors[0]);
+        }
+        const nowIso = new Date().toISOString();
         if (idx >= 0) {
           draft.budgetPools[idx] = {
             ...draft.budgetPools[idx],

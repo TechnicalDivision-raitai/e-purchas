@@ -39,6 +39,7 @@ import {
 } from '../../data/constants';
 import {
   calculateBudgetPoolUsage,
+  findBudgetPoolOverlapWarnings,
   validateBudgetPool,
 } from '../../domain/budgetPools';
 import {
@@ -417,6 +418,50 @@ export function ProjectEditorModal({
     const reference = Math.max(0, Number(draft.reference) || 0);
     return agreed > 0 ? agreed : reference;
   }, [draft.agreed, draft.reference, draft.statusMode, draft.manualStatus]);
+
+  const quickPoolLiveChecks = useMemo(() => {
+    if (!quickPoolOpen) {
+      return {
+        duplicateErrors: [] as string[],
+        overlapWarnings: [] as ReturnType<typeof findBudgetPoolOverlapWarnings>,
+      };
+    }
+    const previewPool: Partial<BudgetPool> = {
+      year: Number(draft.year) || 2570,
+      code: '',
+      planName: quickPoolPlan.trim(),
+      workName: quickPoolWork.trim(),
+      budgetType: quickPoolBudgetType.trim(),
+      expenseCategory: quickPoolCategory.trim(),
+      expenseSubCategory: quickPoolSubCategory.trim(),
+      name:
+        quickPoolName.trim() ||
+        suggestPoolNameFromSubCategory(
+          quickPoolCategory.trim(),
+          quickPoolSubCategory.trim(),
+        ),
+      allocatedBudget: Number(quickPoolAmount) || 1,
+    };
+    const duplicateErrors = validateBudgetPool(previewPool, budgetPools).filter(
+      (err) => err.includes('ซ้ำ') || err.includes('มีอยู่แล้ว'),
+    );
+    const overlapWarnings = findBudgetPoolOverlapWarnings(
+      previewPool,
+      budgetPools,
+    );
+    return { duplicateErrors, overlapWarnings };
+  }, [
+    quickPoolOpen,
+    draft.year,
+    quickPoolPlan,
+    quickPoolWork,
+    quickPoolBudgetType,
+    quickPoolCategory,
+    quickPoolSubCategory,
+    quickPoolName,
+    quickPoolAmount,
+    budgetPools,
+  ]);
 
   const handleQuickCreatePool = () => {
     setQuickPoolError('');
@@ -1839,6 +1884,27 @@ export function ProjectEditorModal({
                                 บันทึกหมวดนี้
                               </button>
                             </div>
+                            {(quickPoolLiveChecks.duplicateErrors.length > 0 ||
+                              quickPoolLiveChecks.overlapWarnings.length > 0) && (
+                              <div className="space-y-1">
+                                {quickPoolLiveChecks.duplicateErrors.map((msg, i) => (
+                                  <p
+                                    key={`dup-${i}`}
+                                    className="rounded border border-[#f0b4b4] bg-[#fff3f3] px-2.5 py-1 text-[11px] font-medium text-[#b52c2c]"
+                                  >
+                                    • {msg}
+                                  </p>
+                                ))}
+                                {quickPoolLiveChecks.overlapWarnings.map((w, i) => (
+                                  <p
+                                    key={`warn-${i}`}
+                                    className="rounded border border-[#ebd09c] bg-[#fff8e8] px-2.5 py-1 text-[11px] text-[#7c4d0c]"
+                                  >
+                                    • {w.message}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
                             {quickPoolError && (
                               <p className="text-[11px] text-[#b52c2c]">
                                 {quickPoolError}

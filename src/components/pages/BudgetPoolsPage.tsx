@@ -21,6 +21,8 @@ import {
 } from '../../data/constants';
 import {
   calculateBudgetPoolUsageList,
+  findBudgetPoolOverlapWarnings,
+  findDuplicatePoolGroups,
   getProjectPoolCommitment,
   validateBudgetPool,
   type BudgetPoolUsage,
@@ -189,6 +191,39 @@ export function BudgetPoolsPage({
       ),
     [budgetPools, state.rows, viewFilter.year, viewFilter.q],
   );
+
+  const duplicateAnalysis = useMemo(
+    () => findDuplicatePoolGroups(budgetPools),
+    [budgetPools],
+  );
+
+  const draftLiveChecks = useMemo(() => {
+    if (!modalOpen) {
+      return { duplicateErrors: [] as string[], overlapWarnings: [] as ReturnType<typeof findBudgetPoolOverlapWarnings> };
+    }
+    const previewPool: Partial<BudgetPool> = {
+      year: Number(draft.year) || currentFiscalYear(),
+      code: draft.code.trim(),
+      planName: draft.planName.trim(),
+      workName: draft.workName.trim(),
+      budgetType: draft.budgetType.trim(),
+      expenseCategory: draft.expenseCategory.trim(),
+      expenseSubCategory: draft.expenseSubCategory.trim(),
+      name: draft.name.trim(),
+      allocatedBudget: Number(draft.allocatedBudget) || 1,
+    };
+    const duplicateErrors = validateBudgetPool(
+      previewPool,
+      budgetPools,
+      editingPoolId || undefined,
+    ).filter((err) => err.includes('ซ้ำ') || err.includes('มีอยู่แล้ว'));
+    const overlapWarnings = findBudgetPoolOverlapWarnings(
+      previewPool,
+      budgetPools,
+      editingPoolId || undefined,
+    );
+    return { duplicateErrors, overlapWarnings };
+  }, [modalOpen, draft, budgetPools, editingPoolId]);
 
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -517,6 +552,44 @@ export function BudgetPoolsPage({
         )}
 
         <div className="p-5">
+          {(duplicateAnalysis.exactDuplicateGroups.length > 0 ||
+            duplicateAnalysis.hierarchyOverlapGroups.length > 0) && (
+            <div className="mb-4 rounded-xl border border-[#e8c27a] bg-[#fff9eb] px-4 py-3 text-xs text-[#6e4708]">
+              <div className="flex items-center gap-1.5 font-bold text-[#8a5404]">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#c97a08]" />
+                ตรวจพบรายการงบประมาณที่อาจซ้ำซ้อนใน BUDGET DATA
+              </div>
+              {duplicateAnalysis.exactDuplicateGroups.length > 0 && (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[11px] text-[#9b2c2c]">
+                  {duplicateAnalysis.exactDuplicateGroups.map((g, idx) => (
+                    <li key={idx}>
+                      <b>{g.reason}</b> ({g.pools.length} รายการ:{' '}
+                      {g.pools
+                        .map((p) => `“${p.name}” ฿${formatMoney(p.allocatedBudget)}`)
+                        .join(', ')}
+                      )
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {duplicateAnalysis.hierarchyOverlapGroups.length > 0 && (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[11px] text-[#7a4f0a]">
+                  {duplicateAnalysis.hierarchyOverlapGroups.map((g, idx) => (
+                    <li key={idx}>
+                      ลำดับขั้น 5 ระดับเดียวกัน ({g.pathLabel}) มี {g.pools.length} หมวด:{' '}
+                      {g.pools
+                        .map(
+                          (p) =>
+                            `“${p.name}” ปี ${p.year} (฿${formatMoney(p.allocatedBudget)})`,
+                        )
+                        .join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {usages.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#b6cde6] bg-[#f5f9fe] px-6 py-12 text-center">
               <span className="grid h-11 w-11 place-items-center rounded-lg bg-[#dcebfa] text-[#1455b3]">
@@ -588,6 +661,18 @@ export function BudgetPoolsPage({
                                 {formatBudgetHierarchyPath(pool)}
                               </span>
                             )}
+                            {duplicateAnalysis.exactDuplicateIds.has(pool.id) && (
+                              <span className="inline-flex items-center gap-1 rounded border border-[#f0b4b4] bg-[#fff0f0] px-2 py-0.5 text-[10.5px] font-semibold text-[#b52c2c]">
+                                <AlertTriangle className="h-3 w-3" />
+                                ชื่อ/รหัสซ้ำซ้อน
+                              </span>
+                            )}
+                            {!duplicateAnalysis.exactDuplicateIds.has(pool.id) &&
+                              duplicateAnalysis.overlapIds.has(pool.id) && (
+                                <span className="inline-flex items-center gap-1 rounded border border-[#ebd09c] bg-[#fff7e6] px-2 py-0.5 text-[10.5px] font-semibold text-[#8a5404]">
+                                  ลำดับขั้น 5 ระดับซ้ำกับหมวดอื่น
+                                </span>
+                              )}
                             {usage.isOverBudget && (
                               <span className="inline-flex items-center gap-1 rounded border border-[#f0b4b4] bg-[#fff0f0] px-2 py-0.5 text-[10.5px] font-semibold text-[#b52c2c]">
                                 <AlertTriangle className="h-3 w-3" />
@@ -1217,6 +1302,27 @@ export function BudgetPoolsPage({
                   />
                 </label>
               </div>
+
+              {(draftLiveChecks.duplicateErrors.length > 0 ||
+                draftLiveChecks.overlapWarnings.length > 0) && (
+                <div className="space-y-2">
+                  {draftLiveChecks.duplicateErrors.length > 0 && (
+                    <div className="rounded-lg border border-[#f0b4b4] bg-[#fff3f3] px-3 py-2 text-[11.5px] font-medium text-[#b52c2c]">
+                      {draftLiveChecks.duplicateErrors.map((msg, i) => (
+                        <div key={i}>• {msg}</div>
+                      ))}
+                    </div>
+                  )}
+                  {draftLiveChecks.overlapWarnings.map((w, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-[#ebd09c] bg-[#fff8e8] px-3 py-2 text-[11.5px] text-[#7c4d0c]"
+                    >
+                      • {w.message}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {formError && (
                 <div
