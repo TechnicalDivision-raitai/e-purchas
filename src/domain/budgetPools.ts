@@ -1,4 +1,4 @@
-import type { BudgetPool, ProjectRecord } from '../types/procurement';
+import type { BudgetPool, BudgetTransfer, ProjectRecord } from '../types/procurement';
 import { normalizeCodeKey } from '../utils/format';
 import { isFinancialEligible } from './excel';
 import { getTotalVoucherAmount } from './procurement';
@@ -610,3 +610,167 @@ export function findDuplicatePoolGroups(
     similarIds,
   };
 }
+
+export interface PoolTransferSummary {
+  transferredIn: number;
+  transferredOut: number;
+  externalIn: number;
+  netTransfer: number;
+  count: number;
+}
+
+export function calculatePoolTransferSummary(
+  poolId: string,
+  transfers: BudgetTransfer[] = [],
+): PoolTransferSummary {
+  let transferredIn = 0;
+  let transferredOut = 0;
+  let externalIn = 0;
+  let count = 0;
+
+  for (const t of transfers) {
+    const amt = Math.max(0, Number(t.amount || 0));
+    if (amt <= 0) continue;
+    let matched = false;
+    if (t.toPoolId === poolId) {
+      if (t.transferType === 'from_external') {
+        externalIn += amt;
+      } else {
+        transferredIn += amt;
+      }
+      matched = true;
+    }
+    if (t.transferType === 'between_pools' && t.fromPoolId === poolId) {
+      transferredOut += amt;
+      matched = true;
+    }
+    if (matched) count += 1;
+  }
+
+  return {
+    transferredIn,
+    transferredOut,
+    externalIn,
+    netTransfer: transferredIn + externalIn - transferredOut,
+    count,
+  };
+}
+
+export function filterBudgetTransfers(
+  transfers: BudgetTransfer[] = [],
+  fiscalYear?: string,
+  searchQuery?: string,
+): BudgetTransfer[] {
+  const q = String(searchQuery || '').trim().toLowerCase();
+  return [...transfers]
+    .filter((t) => {
+      if (fiscalYear && Number(t.year) !== Number(fiscalYear)) return false;
+      if (q) {
+        const hay = [
+          t.docNo,
+          t.fromPoolName,
+          t.externalSource,
+          t.toPoolName,
+          t.reason,
+          t.createdBy,
+          t.transferDate,
+        ]
+          .map((v) => String(v || '').toLowerCase())
+          .join(' ');
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const dateCmp = String(b.transferDate || '').localeCompare(
+        String(a.transferDate || ''),
+      );
+      if (dateCmp !== 0) return dateCmp;
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+}
+
+export interface BudgetTransferValidationResult {
+  errors: string[];
+  sourcePool?: BudgetPool;
+  sourceUsage?: BudgetPoolUsage;
+  targetPool?: BudgetPool;
+  targetUsage?: BudgetPoolUsage;
+}
+
+export function validateBudgetTransfer(
+  draft: Partial<BudgetTransfer>,
+  pools: BudgetPool[],
+  allRows: ProjectRecord[],
+): BudgetTransferValidationResult {
+  const errors: string[] = [];
+  const year = Number(draft.year);
+  const amount = Number(draft.amount);
+  const transferType = draft.transferType || 'between_pools';
+
+  if (!Number.isInteger(year) || year < 2500 || year > 2650) {
+    errors.push('ปีงบประมาณต้องอยู่ระหว่าง พ.ศ. 2500–2650');
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    errors.push('จำนวนเงินที่โอนต้องมากกว่า 0 บาท');
+  }
+  if (!String(draft.transferDate || '').trim()) {
+    errors.push('กรุณาระบุวันที่โอนเงินงบประมาณ');
+  }
+
+  const targetPool = draft.toPoolId
+    ? pools.find((p) => p.id === draft.toPoolId)
+    : undefined;
+  if (!targetPool) {
+    errors.push('กรุณาเลือกหมวดงบปลายทางที่จะรับโอนเข้า');
+  } else if (Number(targetPool.year) !== year) {
+    errors.push(`หมวดงบปลายทาง "${targetPool.name}" ไม่ได้อยู่ในปีงบฯ ${year}`);
+  }
+
+  const targetUsage = targetPool
+    ? calculateBudgetPoolUsage(targetPool, allRows)
+    : undefined;
+
+  let sourcePool: BudgetPool | undefined;
+  let sourceUsage: BudgetPoolUsage | undefined;
+
+  if (transferType === 'between_pools') {
+    sourcePool = draft.fromPoolId
+      ? pools.find((p) => p.id === draft.fromPoolId)
+      : undefined;
+    if (!sourcePool) {
+      errors.push('กรุณาเลือกหมวดงบต้นทางที่จะโอนลดออก');
+    } else {
+      if (Number(sourcePool.year) !== year) {
+        errors.push(`หมวดงบต้นทาง "${sourcePool.name}" ไม่ได้อยู่ในปีงบฯ ${year}`);
+      }
+      if (targetPool && sourcePool.id === targetPool.id) {
+        errors.push('หมวดงบต้นทางและหมวดงบปลายทางต้องไม่ใช่หมวดเดียวกัน');
+      }
+      sourceUsage = calculateBudgetPoolUsage(sourcePool, allRows);
+      if (Number.isFinite(amount) && amount > 0) {
+        if (amount - sourceUsage.remainingAmount > 0.005) {
+          errors.push(
+            `วงเงินคงเหลือของหมวดต้นทาง "${sourcePool.name}" ไม่เพียงพอ (คงเหลือ ${sourceUsage.remainingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท)`,
+          );
+        } else if (amount - Number(sourcePool.allocatedBudget || 0) > 0.005) {
+          errors.push('จำนวนเงินที่โอนเกินวงเงินตั้งไว้ของหมวดต้นทาง');
+        }
+      }
+    }
+  } else {
+    const ext = String(draft.externalSource || '').trim();
+    if (!ext) {
+      errors.push('กรุณาระบุแหล่งงบประมาณต้นทาง (เช่น งบกลาง, เงินสะสม)');
+    }
+  }
+
+  return {
+    errors,
+    sourcePool,
+    sourceUsage,
+    targetPool,
+    targetUsage,
+  };
+}
+

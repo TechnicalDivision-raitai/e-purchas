@@ -41,7 +41,7 @@ export function ProjectsTablePanel({
         return;
       }
       exportWorkbookFile(
-        buildExcelTables(rows, state.budgetPools),
+        buildExcelTables(rows, state.budgetPools, state.budgetTransfers),
         'ทะเบียนโครงการครบทุกหมวด.xlsx',
       );
       showToast('สร้างไฟล์ส่งออกครบทุกหมวดแล้ว');

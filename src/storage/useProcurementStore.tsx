@@ -19,7 +19,10 @@ import {
   VIEW_STORAGE_KEY,
 } from '../data/constants';
 import { SARABAN_CATEGORY_META } from '../data/constants';
-import { validateBudgetPool } from '../domain/budgetPools';
+import {
+  validateBudgetPool,
+  validateBudgetTransfer,
+} from '../domain/budgetPools';
 import {
   resolveProjectExpenseClassification,
   UNSPECIFIED_EXPENSE_CATEGORY,
@@ -45,6 +48,7 @@ import {
 } from '../services/googleSync';
 import type {
   BudgetPool,
+  BudgetTransfer,
   ExpenseCategoryGroup,
   PageId,
   ProcurementState,
@@ -81,6 +85,8 @@ interface ProcurementContextValue {
   deleteProject: (id: string) => boolean;
   saveBudgetPool: (pool: BudgetPool) => boolean;
   deleteBudgetPool: (id: string) => boolean;
+  saveBudgetTransfer: (transfer: BudgetTransfer) => boolean;
+  deleteBudgetTransfer: (transferId: string) => boolean;
   saveExpenseCategories: (catalog: ExpenseCategoryGroup[]) => boolean;
   refreshFromStorage: () => Promise<void>;
   refreshSarabanQueue: (notifyOnSuccess?: boolean) => Promise<void>;
@@ -219,6 +225,17 @@ function normalizeLoadedState(raw: ProcurementState): ProcurementState {
     dedupedPools.push(pool);
   }
 
+  const rawTransfers = Array.isArray(raw.budgetTransfers)
+    ? raw.budgetTransfers
+    : [];
+  const dedupedTransfers: BudgetTransfer[] = [];
+  const seenTransferIds = new Set<string>();
+  for (const transfer of rawTransfers) {
+    if (!transfer?.id || seenTransferIds.has(transfer.id)) continue;
+    seenTransferIds.add(transfer.id);
+    dedupedTransfers.push(transfer);
+  }
+
   return {
     version: raw.version || 2,
     steps: createDefaultSteps(),
@@ -227,6 +244,7 @@ function normalizeLoadedState(raw: ProcurementState): ProcurementState {
       step: normalizeLegacyStepId(r.step),
     })),
     budgetPools: dedupedPools,
+    budgetTransfers: dedupedTransfers,
     expenseCategories: Array.isArray(raw.expenseCategories)
       ? raw.expenseCategories
       : undefined,
@@ -342,6 +360,16 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
                 ? prevPools
                 : remote.budgetPools || prevPools;
 
+            const prevTransfers = prev.budgetTransfers || [];
+            const remoteHasTransfers =
+              Array.isArray(remote.budgetTransfers) &&
+              remote.budgetTransfers.length > 0;
+            const mergedTransfers = remoteHasTransfers
+              ? remote.budgetTransfers!
+              : prevTransfers.length > 0
+                ? prevTransfers
+                : remote.budgetTransfers || prevTransfers;
+
             const mergedExpenseCategories =
               Array.isArray(remote.expenseCategories) &&
               remote.expenseCategories.length > 0
@@ -353,6 +381,7 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               steps: createDefaultSteps(),
               rows: mergedRows,
               budgetPools: mergedPools,
+              budgetTransfers: mergedTransfers,
               expenseCategories: mergedExpenseCategories,
             });
             persistStateLocally(next);
@@ -412,6 +441,10 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
               (prev.budgetPools || []).length > 0
                 ? prev.budgetPools
                 : normalized.budgetPools,
+            budgetTransfers:
+              (prev.budgetTransfers || []).length > 0
+                ? prev.budgetTransfers
+                : normalized.budgetTransfers,
             expenseCategories:
               (prev.expenseCategories || []).length > 0
                 ? prev.expenseCategories
@@ -638,6 +671,118 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
             row.budgetPoolId = undefined;
           }
         }
+      });
+    },
+    [commit],
+  );
+
+  const saveBudgetTransfer = useCallback(
+    (transfer: BudgetTransfer): boolean => {
+      return commit((draft) => {
+        if (!Array.isArray(draft.budgetPools)) {
+          draft.budgetPools = [];
+        }
+        if (!Array.isArray(draft.budgetTransfers)) {
+          draft.budgetTransfers = [];
+        }
+        const validation = validateBudgetTransfer(
+          transfer,
+          draft.budgetPools,
+          draft.rows,
+        );
+        if (validation.errors.length > 0) {
+          throw new Error(validation.errors[0]);
+        }
+        const amount = Math.round(Number(transfer.amount || 0) * 100) / 100;
+        const nowIso = new Date().toISOString();
+
+        const targetPool = draft.budgetPools.find(
+          (p) => p.id === transfer.toPoolId,
+        );
+        if (!targetPool) {
+          throw new Error('ไม่พบหมวดงบปลายทาง');
+        }
+
+        let fromPoolNameSnapshot = transfer.fromPoolName;
+        if (transfer.transferType === 'between_pools') {
+          const sourcePool = draft.budgetPools.find(
+            (p) => p.id === transfer.fromPoolId,
+          );
+          if (!sourcePool) {
+            throw new Error('ไม่พบหมวดงบต้นทาง');
+          }
+          sourcePool.allocatedBudget = Math.max(
+            0,
+            Math.round((Number(sourcePool.allocatedBudget || 0) - amount) * 100) /
+              100,
+          );
+          sourcePool.updatedAt = nowIso;
+          fromPoolNameSnapshot = sourcePool.name;
+        }
+
+        targetPool.allocatedBudget =
+          Math.round((Number(targetPool.allocatedBudget || 0) + amount) * 100) /
+          100;
+        targetPool.updatedAt = nowIso;
+
+        draft.budgetTransfers.push({
+          ...transfer,
+          amount,
+          fromPoolName:
+            transfer.transferType === 'between_pools'
+              ? fromPoolNameSnapshot
+              : undefined,
+          externalSource:
+            transfer.transferType === 'from_external'
+              ? String(transfer.externalSource || '').trim()
+              : undefined,
+          toPoolName: targetPool.name,
+          createdBy: transfer.createdBy || user.name,
+          createdAt: transfer.createdAt || nowIso,
+        });
+      });
+    },
+    [commit, user.name],
+  );
+
+  const deleteBudgetTransfer = useCallback(
+    (transferId: string): boolean => {
+      return commit((draft) => {
+        const list = draft.budgetTransfers || [];
+        const idx = list.findIndex((t) => t.id === transferId);
+        if (idx === -1) throw new Error('ไม่พบรายการโอนงบประมาณ');
+        const targetTransfer = list[idx];
+        const amount = Math.max(0, Number(targetTransfer.amount || 0));
+        const nowIso = new Date().toISOString();
+
+        const pools = draft.budgetPools || [];
+        const toPool = pools.find((p) => p.id === targetTransfer.toPoolId);
+        if (toPool) {
+          toPool.allocatedBudget = Math.max(
+            0,
+            Math.round((Number(toPool.allocatedBudget || 0) - amount) * 100) /
+              100,
+          );
+          toPool.updatedAt = nowIso;
+        }
+        if (
+          targetTransfer.transferType === 'between_pools' &&
+          targetTransfer.fromPoolId
+        ) {
+          const fromPool = pools.find(
+            (p) => p.id === targetTransfer.fromPoolId,
+          );
+          if (fromPool) {
+            fromPool.allocatedBudget =
+              Math.round(
+                (Number(fromPool.allocatedBudget || 0) + amount) * 100,
+              ) / 100;
+            fromPool.updatedAt = nowIso;
+          }
+        }
+
+        list.splice(idx, 1);
+        draft.budgetTransfers = list;
       });
     },
     [commit],
@@ -982,6 +1127,8 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     deleteProject,
     saveBudgetPool,
     deleteBudgetPool,
+    saveBudgetTransfer,
+    deleteBudgetTransfer,
     saveExpenseCategories,
     refreshFromStorage,
     refreshSarabanQueue,

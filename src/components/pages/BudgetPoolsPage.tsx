@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeftRight,
   ChevronDown,
   ChevronUp,
   FolderTree,
@@ -21,6 +22,8 @@ import {
 } from '../../data/constants';
 import {
   calculateBudgetPoolUsageList,
+  calculatePoolTransferSummary,
+  filterBudgetTransfers,
   findBudgetPoolOverlapWarnings,
   findDuplicatePoolGroups,
   getProjectPoolCommitment,
@@ -37,14 +40,20 @@ import {
 } from '../../domain/expenseCategories';
 import { getTotalVoucherAmount } from '../../domain/procurement';
 import { useProcurement } from '../../storage/useProcurementStore';
-import type { BudgetPool } from '../../types/procurement';
-import { currentFiscalYear, getFiscalYearOptions, uid } from '../../utils/date';
+import type { BudgetPool, BudgetTransfer } from '../../types/procurement';
+import {
+  currentFiscalYear,
+  formatThaiDate,
+  getFiscalYearOptions,
+  uid,
+} from '../../utils/date';
 import { formatMoney } from '../../utils/format';
 import {
   AutoSuggestInput,
   collectNormalizedSuggestions,
 } from '../common/AutoSuggestInput';
 import { StatusBadge } from '../common/StatusBadge';
+import { BudgetTransferModal } from '../modals/BudgetTransferModal';
 import { ExpenseCategoriesModal } from '../modals/ExpenseCategoriesModal';
 
 interface BudgetPoolsPageProps {
@@ -98,15 +107,26 @@ export function BudgetPoolsPage({
     viewFilter,
     saveBudgetPool,
     deleteBudgetPool,
+    deleteBudgetTransfer,
     showToast,
   } = useProcurement();
 
   const isAdmin = user.role === 'admin';
   const budgetPools = state.budgetPools || [];
+  const budgetTransfers = state.budgetTransfers || [];
 
+  const [expandedDetailIds, setExpandedDetailIds] = useState<
+    Record<string, boolean>
+  >({});
   const [expandedPoolIds, setExpandedPoolIds] = useState<Record<string, boolean>>({});
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [transferModalState, setTransferModalState] = useState<{
+    open: boolean;
+    initialPoolId?: string;
+  }>({ open: false });
+  const [deleteTransferTarget, setDeleteTransferTarget] =
+    useState<BudgetTransfer | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
   const [draft, setDraft] = useState<PoolDraft>(() =>
@@ -209,6 +229,22 @@ export function BudgetPoolsPage({
     [budgetPools],
   );
 
+  const filteredTransfers = useMemo(
+    () => filterBudgetTransfers(budgetTransfers, viewFilter.year, viewFilter.q),
+    [budgetTransfers, viewFilter.year, viewFilter.q],
+  );
+
+  const transferStats = useMemo(() => {
+    let betweenTotal = 0;
+    let externalTotal = 0;
+    for (const t of filteredTransfers) {
+      const amt = Math.max(0, Number(t.amount || 0));
+      if (t.transferType === 'from_external') externalTotal += amt;
+      else betweenTotal += amt;
+    }
+    return { betweenTotal, externalTotal };
+  }, [filteredTransfers]);
+
   const draftLiveChecks = useMemo(() => {
     if (!modalOpen) {
       return { duplicateErrors: [] as string[], overlapWarnings: [] as ReturnType<typeof findBudgetPoolOverlapWarnings> };
@@ -293,6 +329,10 @@ export function BudgetPoolsPage({
       overBudgetCount,
     };
   }, [usages]);
+
+  const toggleDetailExpand = (poolId: string) => {
+    setExpandedDetailIds((prev) => ({ ...prev, [poolId]: !prev[poolId] }));
+  };
 
   const toggleExpand = (poolId: string) => {
     setExpandedPoolIds((prev) => ({ ...prev, [poolId]: !prev[poolId] }));
@@ -393,6 +433,17 @@ export function BudgetPoolsPage({
     if (deleteBudgetPool(deleteTarget.pool.id)) {
       showToast(`ลบหมวดวงเงิน "${name}" แล้ว`);
       setDeleteTarget(null);
+    }
+  };
+
+  const handleConfirmDeleteTransfer = () => {
+    if (!deleteTransferTarget) return;
+    const amt = deleteTransferTarget.amount;
+    if (deleteBudgetTransfer(deleteTransferTarget.id)) {
+      showToast(
+        `ยกเลิกการโอนเงินงบประมาณ ฿${formatMoney(amt)} และปรับคืนยอดเรียบร้อยแล้ว`,
+      );
+      setDeleteTransferTarget(null);
     }
   };
 
@@ -520,26 +571,70 @@ export function BudgetPoolsPage({
             </p>
           </div>
 
-          {isAdmin && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCategoryModalOpen(true)}
-                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#9fc0e6] bg-white px-3 py-2 text-xs font-semibold text-[#134a96] transition hover:border-[#6da3df] hover:bg-[#e7f1fc]"
-              >
-                <FolderTree className="h-3.5 w-3.5" />
-                จัดการหมวดค่าใช้จ่าย
-              </button>
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:from-[#0b387d] hover:to-[#135ba4]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                เพิ่ม BUDGET DATA
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {usages.length > 0 && (() => {
+              const allDetailsExpanded = usages.every((u) =>
+                Boolean(expandedDetailIds[u.pool.id]),
+              );
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (allDetailsExpanded) {
+                      setExpandedDetailIds({});
+                    } else {
+                      const next: Record<string, boolean> = {};
+                      usages.forEach((u) => {
+                        next[u.pool.id] = true;
+                      });
+                      setExpandedDetailIds(next);
+                    }
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-[#b5cde8] bg-white px-2.5 py-2 text-xs font-semibold text-[#2a4d75] transition hover:bg-[#e7f1fc]"
+                >
+                  {allDetailsExpanded ? (
+                    <>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                      ย่อทั้งหมด
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      ขยายทั้งหมด
+                    </>
+                  )}
+                </button>
+              );
+            })()}
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCategoryModalOpen(true)}
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#9fc0e6] bg-white px-3 py-2 text-xs font-semibold text-[#134a96] transition hover:border-[#6da3df] hover:bg-[#e7f1fc]"
+                >
+                  <FolderTree className="h-3.5 w-3.5" />
+                  จัดการหมวดค่าใช้จ่าย
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTransferModalState({ open: true })}
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0f766e] bg-[#ecfdf5] px-3 py-2 text-xs font-semibold text-[#0f6b47] transition hover:bg-[#d8f5e9]"
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                  โอนเงินงบประมาณ
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0d4294] bg-gradient-to-r from-[#0f489e] to-[#1972c9] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:from-[#0b387d] hover:to-[#135ba4]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  เพิ่ม BUDGET DATA
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {categoryCounts.length > 0 && (
@@ -644,9 +739,10 @@ export function BudgetPoolsPage({
               )}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {usages.map((usage) => {
                 const { pool } = usage;
+                const detailsExpanded = Boolean(expandedDetailIds[pool.id]);
                 const expanded = Boolean(expandedPoolIds[pool.id]);
                 const allocated = Math.max(0, Number(pool.allocatedBudget || 0));
                 const agreedPct =
@@ -670,7 +766,7 @@ export function BudgetPoolsPage({
                         : 'border-[#bdd3ec]'
                     }`}
                   >
-                    <div className="p-4 sm:p-5">
+                    <div className="p-3.5 sm:px-5 sm:py-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -712,17 +808,20 @@ export function BudgetPoolsPage({
                             )}
                           </div>
 
-                          <h3 className="mt-1.5 text-[15px] font-bold text-[#0f2c52]">
+                          <h3 className="mt-1.5 text-[14.5px] font-bold text-[#0f2c52]">
                             {pool.name}
                           </h3>
-                          <p className="mt-0.5 text-[11.5px] text-[#4c6a8d]">
-                            {pool.department || DEFAULT_DEPARTMENT} ·{' '}
-                            {pool.fund || 'งบประมาณรายจ่าย'}
-                            {pool.notes ? ` · ${pool.notes}` : ''}
-                          </p>
+
+                          {detailsExpanded && (
+                            <p className="mt-0.5 text-[11.5px] text-[#4c6a8d]">
+                              {pool.department || DEFAULT_DEPARTMENT} ·{' '}
+                              {pool.fund || 'งบประมาณรายจ่าย'}
+                              {pool.notes ? ` · ${pool.notes}` : ''}
+                            </p>
+                          )}
                         </div>
 
-                        {isAdmin && (
+                        {detailsExpanded && isAdmin && (
                           <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
@@ -731,6 +830,19 @@ export function BudgetPoolsPage({
                             >
                               <Plus className="h-3.5 w-3.5" />
                               ซื้อในวงเงินนี้
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTransferModalState({
+                                  open: true,
+                                  initialPoolId: pool.id,
+                                })
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-[#9fd3be] bg-[#ecfdf5] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#0f6b47] transition hover:bg-[#d8f5e9]"
+                            >
+                              <ArrowLeftRight className="h-3 w-3" />
+                              โอนงบ
                             </button>
                             <button
                               type="button"
@@ -755,133 +867,234 @@ export function BudgetPoolsPage({
                         )}
                       </div>
 
-                      <div className="mt-4">
-                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                          <span className="font-medium text-[#37587e]">
-                            ความคืบหน้าการใช้วงเงิน ({usage.eligibleCount} รายการที่นับยอด
-                            {usage.linkedProjects.length > usage.eligibleCount
-                              ? ` · ไม่นับพัก/ยกเลิก ${usage.linkedProjects.length - usage.eligibleCount}`
-                              : ''}
-                            )
-                          </span>
-                          <span
-                            className={`font-mono-num font-semibold ${
-                              usage.isOverBudget
-                                ? 'text-[#b52c2c]'
-                                : usage.utilizationPct >= 85
-                                  ? 'text-[#a66d0d]'
-                                  : 'text-[#144fa6]'
-                            }`}
+                      {!detailsExpanded && (
+                        <div className="mt-1.5 flex items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[#4c6a8d] tabular-nums">
+                            <span>
+                              ตั้งไว้{' '}
+                              <strong className="font-mono-num font-semibold text-[#0f2c52]">
+                                ฿{formatMoney(allocated)}
+                              </strong>
+                            </span>
+                            <span>·</span>
+                            <span>
+                              ใช้ไป{' '}
+                              <strong
+                                className={`font-mono-num font-semibold ${
+                                  usage.isOverBudget
+                                    ? 'text-[#b52c2c]'
+                                    : usage.utilizationPct >= 85
+                                      ? 'text-[#a66d0d]'
+                                      : 'text-[#144fa6]'
+                                }`}
+                              >
+                                {usage.utilizationPct.toFixed(1)}%
+                              </strong>
+                            </span>
+                            <span>·</span>
+                            <span>
+                              คงเหลือ{' '}
+                              <strong
+                                className={`font-mono-num font-semibold ${
+                                  usage.isOverBudget
+                                    ? 'text-[#b52c2c]'
+                                    : 'text-[#0f6b47]'
+                                }`}
+                              >
+                                ฿{formatMoney(usage.remainingAmount)}
+                              </strong>
+                            </span>
+                            <span>·</span>
+                            <span>{usage.linkedProjects.length} รายการซื้อ</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            aria-expanded={false}
+                            aria-label={`ขยายรายละเอียด ${pool.name}`}
+                            title="ขยายรายละเอียด"
+                            onClick={() => toggleDetailExpand(pool.id)}
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-[#b6cde6] bg-[#f4f8fe] text-[#144b96] transition hover:bg-[#e3effc]"
                           >
-                            ใช้ไป {usage.utilizationPct.toFixed(1)}%
-                          </span>
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
                         </div>
-                        <div className="flex h-2.5 w-full overflow-hidden rounded bg-[#dce9f7]">
-                          {usage.isOverBudget ? (
-                            <div
-                              className="h-full w-full bg-[#c93434]"
-                              title="ยอดใช้เกินวงเงินตั้งไว้"
-                            />
-                          ) : (
-                            <>
-                              <div
-                                className="h-full bg-gradient-to-r from-[#0f489e] to-[#1e7ee0] transition-all"
-                                style={{ width: `${agreedPct}%` }}
-                                title={`ตกลงซื้อแล้ว ฿ ${formatMoney(usage.agreedAmount)}`}
-                              />
-                              {reservedPct > 0 && (
+                      )}
+
+                      {detailsExpanded && (
+                        <>
+                          <div className="mt-4">
+                            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <span className="font-medium text-[#37587e]">
+                                ความคืบหน้าการใช้วงเงิน ({usage.eligibleCount}{' '}
+                                รายการที่นับยอด
+                                {usage.linkedProjects.length > usage.eligibleCount
+                                  ? ` · ไม่นับพัก/ยกเลิก ${usage.linkedProjects.length - usage.eligibleCount}`
+                                  : ''}
+                                )
+                              </span>
+                              <span
+                                className={`font-mono-num font-semibold ${
+                                  usage.isOverBudget
+                                    ? 'text-[#b52c2c]'
+                                    : usage.utilizationPct >= 85
+                                      ? 'text-[#a66d0d]'
+                                      : 'text-[#144fa6]'
+                                }`}
+                              >
+                                ใช้ไป {usage.utilizationPct.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex h-2.5 w-full overflow-hidden rounded bg-[#dce9f7]">
+                              {usage.isOverBudget ? (
                                 <div
-                                  className="h-full bg-[#e39c2b] transition-all"
-                                  style={{ width: `${reservedPct}%` }}
-                                  title={`กันวงเงินขอซื้อ ฿ ${formatMoney(usage.reservedAmount)}`}
+                                  className="h-full w-full bg-[#c93434]"
+                                  title="ยอดใช้เกินวงเงินตั้งไว้"
                                 />
+                              ) : (
+                                <>
+                                  <div
+                                    className="h-full bg-gradient-to-r from-[#0f489e] to-[#1e7ee0] transition-all"
+                                    style={{ width: `${agreedPct}%` }}
+                                    title={`ตกลงซื้อแล้ว ฿ ${formatMoney(usage.agreedAmount)}`}
+                                  />
+                                  {reservedPct > 0 && (
+                                    <div
+                                      className="h-full bg-[#e39c2b] transition-all"
+                                      style={{ width: `${reservedPct}%` }}
+                                      title={`กันวงเงินขอซื้อ ฿ ${formatMoney(usage.reservedAmount)}`}
+                                    />
+                                  )}
+                                </>
                               )}
-                            </>
-                          )}
-                        </div>
-                      </div>
+                            </div>
+                          </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
-                          <div className="text-[10.5px] font-medium text-[#4d6c8f]">
-                            วงเงินตั้งไว้ทั้งปี
-                          </div>
-                          <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#0f2c52]">
-                            ฿ {formatMoney(allocated)}
-                          </div>
-                        </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                            <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
+                              <div className="text-[10.5px] font-medium text-[#4d6c8f]">
+                                วงเงินตั้งไว้ทั้งปี
+                              </div>
+                              <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#0f2c52]">
+                                ฿ {formatMoney(allocated)}
+                              </div>
+                            </div>
 
-                        <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
-                          <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4d6c8f]">
-                            <span className="inline-block h-2 w-2 rounded-xs bg-[#1455b3]" />
-                            ตกลงซื้อแล้ว
-                          </div>
-                          <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#144fa6]">
-                            ฿ {formatMoney(usage.agreedAmount)}
-                          </div>
-                        </div>
+                            <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4d6c8f]">
+                                <span className="inline-block h-2 w-2 rounded-xs bg-[#1455b3]" />
+                                ตกลงซื้อแล้ว
+                              </div>
+                              <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#144fa6]">
+                                ฿ {formatMoney(usage.agreedAmount)}
+                              </div>
+                            </div>
 
-                        <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
-                          <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4d6c8f]">
-                            <span className="inline-block h-2 w-2 rounded-xs bg-[#e39c2b]" />
-                            กันวงเงิน (ราคากลาง)
-                          </div>
-                          <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#a66d0d]">
-                            ฿ {formatMoney(usage.reservedAmount)}
-                          </div>
-                        </div>
+                            <div className="rounded-lg border border-[#d4e4f5] bg-[#f6fafe] px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 text-[10.5px] font-medium text-[#4d6c8f]">
+                                <span className="inline-block h-2 w-2 rounded-xs bg-[#e39c2b]" />
+                                กันวงเงิน (ราคากลาง)
+                              </div>
+                              <div className="mt-0.5 font-mono-num text-[14px] font-bold text-[#a66d0d]">
+                                ฿ {formatMoney(usage.reservedAmount)}
+                              </div>
+                            </div>
 
-                        <div
-                          className={`rounded-lg border px-3 py-2.5 ${
-                            usage.isOverBudget
-                              ? 'border-[#f0b4b4] bg-[#fff5f5]'
-                              : 'border-[#b7e2cf] bg-[#f1fbf6]'
-                          }`}
-                        >
-                          <div className="text-[10.5px] font-medium text-[#4d6c8f]">
-                            วงเงินคงเหลือ
+                            <div
+                              className={`rounded-lg border px-3 py-2.5 ${
+                                usage.isOverBudget
+                                  ? 'border-[#f0b4b4] bg-[#fff5f5]'
+                                  : 'border-[#b7e2cf] bg-[#f1fbf6]'
+                              }`}
+                            >
+                              <div className="text-[10.5px] font-medium text-[#4d6c8f]">
+                                วงเงินคงเหลือ
+                              </div>
+                              <div
+                                className={`mt-0.5 font-mono-num text-[14px] font-bold ${
+                                  usage.isOverBudget
+                                    ? 'text-[#b52c2c]'
+                                    : 'text-[#0f6b47]'
+                                }`}
+                              >
+                                ฿ {formatMoney(usage.remainingAmount)}
+                              </div>
+                            </div>
                           </div>
-                          <div
-                            className={`mt-0.5 font-mono-num text-[14px] font-bold ${
-                              usage.isOverBudget
-                                ? 'text-[#b52c2c]'
-                                : 'text-[#0f6b47]'
-                            }`}
-                          >
-                            ฿ {formatMoney(usage.remainingAmount)}
+
+                          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-[#e0ebf7] pt-3 text-[11px]">
+                            <div className="flex flex-wrap items-center gap-3 text-[#4f6d90] tabular-nums">
+                              <span>
+                                เบิกจ่ายฎีกาแล้ว:{' '}
+                                <strong className="font-mono-num font-semibold text-[#173c6b]">
+                                  ฿ {formatMoney(usage.voucherAmount)}
+                                </strong>
+                              </span>
+                              {(() => {
+                                const tSum = calculatePoolTransferSummary(
+                                  pool.id,
+                                  budgetTransfers,
+                                );
+                                if (tSum.count === 0) return null;
+                                const totalIn =
+                                  tSum.transferredIn + tSum.externalIn;
+                                return (
+                                  <span className="font-mono-num text-[#2a507a]">
+                                    · โอนงบ ({tSum.count} ครั้ง):{' '}
+                                    {totalIn > 0 && (
+                                      <span className="font-semibold text-[#0f6b47]">
+                                        +฿{formatMoney(totalIn)}
+                                      </span>
+                                    )}
+                                    {totalIn > 0 && tSum.transferredOut > 0
+                                      ? ' '
+                                      : ''}
+                                    {tSum.transferredOut > 0 && (
+                                      <span className="font-semibold text-[#b45309]">
+                                        -฿{formatMoney(tSum.transferredOut)}
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(pool.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-[#b6cde6] bg-[#f4f8fe] px-2.5 py-1 text-[11px] font-semibold text-[#144b96] transition hover:bg-[#e3effc]"
+                              >
+                                {expanded ? (
+                                  <>
+                                    ซ่อนรายการซื้อ ({usage.linkedProjects.length})
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                  </>
+                                ) : (
+                                  <>
+                                    ดูรายการซื้อในวงเงินนี้ (
+                                    {usage.linkedProjects.length})
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                aria-expanded={true}
+                                aria-label={`ย่อรายละเอียด ${pool.name}`}
+                                title="ย่อรายละเอียด"
+                                onClick={() => toggleDetailExpand(pool.id)}
+                                className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-[#9fc0e6] bg-[#e5f0fc] text-[#114594] transition hover:bg-[#d8e9fa]"
+                              >
+                                <ChevronUp className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-[#e0ebf7] pt-3 text-[11px]">
-                        <span className="text-[#4f6d90] tabular-nums">
-                          เบิกจ่ายฎีกาแล้ว:{' '}
-                          <strong className="font-mono-num font-semibold text-[#173c6b]">
-                            ฿ {formatMoney(usage.voucherAmount)}
-                          </strong>
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(pool.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-[#b6cde6] bg-[#f4f8fe] px-2.5 py-1 text-[11px] font-semibold text-[#144b96] transition hover:bg-[#e3effc]"
-                        >
-                          {expanded ? (
-                            <>
-                              ซ่อนรายการซื้อ ({usage.linkedProjects.length})
-                              <ChevronUp className="h-3.5 w-3.5" />
-                            </>
-                          ) : (
-                            <>
-                              ดูรายการซื้อในวงเงินนี้ ({usage.linkedProjects.length})
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
+                        </>
+                      )}
                     </div>
 
-                    {expanded && (
+                    {detailsExpanded && expanded && (
                       <div className="border-t border-[#cde0f3] bg-[#f6fafe] p-4">
                         {usage.linkedProjects.length === 0 ? (
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#547294]">
@@ -988,6 +1201,134 @@ export function BudgetPoolsPage({
                   </article>
                 );
               })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[10px] border border-[#b8d0eb] bg-white shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#c2d8f0] bg-gradient-to-r from-[#eef4fc] to-[#ddeafa] px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-[14px] font-semibold text-[#12396b]">
+                ประวัติการโอนเงินงบประมาณ
+              </h2>
+              <span className="rounded border border-[#a9c5e6] bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#194b8e]">
+                {filteredTransfers.length} รายการ
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-[#4c6a8d] tabular-nums">
+              โอนระหว่างหมวดรวม ฿{formatMoney(transferStats.betweenTotal)} ·
+              โอนเข้าจากงบอื่นๆ รวม ฿{formatMoney(transferStats.externalTotal)}
+            </p>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setTransferModalState({ open: true })}
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#0f766e] bg-white px-3 py-2 text-xs font-semibold text-[#0f6b47] transition hover:bg-[#ecfdf5]"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              บันทึกรายการโอน
+            </button>
+          )}
+        </div>
+
+        <div className="p-5">
+          {filteredTransfers.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#b6cde6] bg-[#f7fbff] px-5 py-8 text-center text-xs text-[#4f6d90]">
+              ยังไม่มีประวัติการโอนเงินงบประมาณ
+              {viewFilter.year ? ` ในปีงบฯ ${viewFilter.year}` : ''}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-[#bdd3ec] bg-white">
+              <table className="w-full min-w-[780px] border-collapse text-left text-[11.5px]">
+                <thead>
+                  <tr className="border-b border-[#c5daf0] bg-[#e5f0fc] text-[#163c6b]">
+                    <th className="px-3 py-2.5 font-semibold">วันที่โอน</th>
+                    <th className="px-3 py-2.5 font-semibold">ปีงบฯ</th>
+                    <th className="px-3 py-2.5 font-semibold">เลขที่เอกสาร</th>
+                    <th className="px-3 py-2.5 font-semibold">ประเภท</th>
+                    <th className="px-3 py-2.5 font-semibold">ต้นทาง</th>
+                    <th className="px-3 py-2.5 font-semibold">หมวดงบปลายทาง</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">
+                      จำนวนเงิน (บาท)
+                    </th>
+                    <th className="px-3 py-2.5 font-semibold">เหตุผล / ผู้บันทึก</th>
+                    {isAdmin && (
+                      <th className="px-3 py-2.5 text-center font-semibold">จัดการ</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTransfers.map((tr) => {
+                    const isExternal = tr.transferType === 'from_external';
+                    const fromPool = tr.fromPoolId
+                      ? budgetPools.find((p) => p.id === tr.fromPoolId)
+                      : undefined;
+                    const toPool = budgetPools.find((p) => p.id === tr.toPoolId);
+                    const fromLabel = isExternal
+                      ? tr.externalSource || 'งบอื่นๆ'
+                      : fromPool?.name || tr.fromPoolName || '—';
+                    const toLabel = toPool?.name || tr.toPoolName || '—';
+                    return (
+                      <tr
+                        key={tr.id}
+                        className="border-b border-[#e2ecf7] last:border-b-0 hover:bg-[#f4f8fe]"
+                      >
+                        <td className="px-3 py-2.5 font-mono-num whitespace-nowrap text-[#1e3f66]">
+                          {formatThaiDate(tr.transferDate)}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono-num text-[#385980]">
+                          {tr.year}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono-num text-[#2a4d75]">
+                          {tr.docNo || '—'}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span
+                            className={`inline-block rounded border px-2 py-0.5 text-[10.5px] font-semibold ${
+                              isExternal
+                                ? 'border-[#9fd3be] bg-[#ecfdf5] text-[#0f6b47]'
+                                : 'border-[#a9c5e6] bg-[#edf4fc] text-[#154b94]'
+                            }`}
+                          >
+                            {isExternal ? 'โอนเข้าจากงบอื่น' : 'โอนระหว่างหมวด'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 font-medium text-[#143763]">
+                          {fromLabel}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-[#0f4c9a]">
+                          {toLabel}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono-num font-bold whitespace-nowrap text-[#0f6b47]">
+                          +฿{formatMoney(tr.amount)}
+                        </td>
+                        <td className="px-3 py-2.5 text-[#49678a]">
+                          <div>{tr.reason || '—'}</div>
+                          {tr.createdBy && (
+                            <div className="text-[10.5px] text-[#6d88a8]">
+                              โดย {tr.createdBy}
+                            </div>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTransferTarget(tr)}
+                              className="rounded border border-[#edb8b8] bg-white px-2 py-1 text-[11px] font-semibold text-[#a82c2c] transition hover:bg-[#ffebeb]"
+                            >
+                              ยกเลิกโอน
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -1490,6 +1831,66 @@ export function BudgetPoolsPage({
           </div>
         </div>
       )}
+      <BudgetTransferModal
+        open={transferModalState.open}
+        initialPoolId={transferModalState.initialPoolId}
+        initialYear={viewFilter.year ? Number(viewFilter.year) : undefined}
+        onClose={() => setTransferModalState({ open: false })}
+      />
+
+      {deleteTransferTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-transfer-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/70 p-4 backdrop-blur-[2px]"
+        >
+          <div className="w-full max-w-[460px] rounded-xl border border-[#9fc0e6] bg-white p-5 shadow-2xl">
+            <h3
+              id="delete-transfer-title"
+              className="text-sm font-bold text-[#0f2a4a]"
+            >
+              ยืนยันการยกเลิกรายการโอนงบประมาณ
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-[#365375]">
+              ต้องการยกเลิกการโอนเงินจำนวน{' '}
+              <b className="font-mono-num text-[#0f2a4a]">
+                ฿{formatMoney(deleteTransferTarget.amount)}
+              </b>{' '}
+              จาก{' '}
+              <b>
+                {deleteTransferTarget.transferType === 'from_external'
+                  ? deleteTransferTarget.externalSource
+                  : deleteTransferTarget.fromPoolName}
+              </b>{' '}
+              เข้า <b>{deleteTransferTarget.toPoolName}</b> หรือไม่?
+            </p>
+            <div className="mt-3 rounded-lg border border-[#ebd09c] bg-[#fff8e8] px-3 py-2 text-[11px] text-[#7c4d0c]">
+              ระบบจะปรับลดวงเงินตั้งไว้ของหมวดปลายทางกลับคืน{' '}
+              {deleteTransferTarget.transferType === 'between_pools'
+                ? 'และคืนวงเงินกลับให้หมวดต้นทางโดยอัตโนมัติ'
+                : 'โดยอัตโนมัติ'}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTransferTarget(null)}
+                className="rounded-lg border border-[#afc8e4] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#274469] hover:bg-[#edf4fc]"
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteTransfer}
+                className="rounded-lg bg-[#b82828] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#961d1d]"
+              >
+                ยืนยันยกเลิกรายการโอน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ExpenseCategoriesModal
         open={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}

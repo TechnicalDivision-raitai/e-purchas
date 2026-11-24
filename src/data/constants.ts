@@ -232,6 +232,16 @@ export const BUDGET_POOL_PRESETS: string[] = [
   'ค่าบำรุงรักษาและซ่อมแซม',
 ];
 
+export const EXTERNAL_TRANSFER_SOURCE_PRESETS: string[] = [
+  'งบกลาง',
+  'เงินสะสม',
+  'เงินทุนสำรองเงินสะสม',
+  'งบประมาณเพิ่มเติม',
+  'โอนเพิ่มจากกอง/สำนักอื่น',
+  'เงินอุดหนุนทั่วไป',
+  'เงินอุดหนุนเฉพาะกิจ',
+];
+
 export const SARABAN_ALLOWED_CATEGORIES = [
   'general_approval',
   'tor_order',
@@ -374,6 +384,7 @@ export function createSeedState(): ProcurementState {
     steps: createDefaultSteps(),
     rows: [],
     budgetPools: [],
+    budgetTransfers: [],
   };
 }
 

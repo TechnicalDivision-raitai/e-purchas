@@ -14,9 +14,11 @@
 const DEFAULT_SPREADSHEET_ID = '19oCgv21-WkPLYthCdqUNFmqaPCeh2G5Dfuo10lcYuZw';
 const DEFAULT_SHEET_NAME = 'ทะเบียนจัดซื้อจัดจ้าง';
 const BUDGET_POOLS_SUMMARY_SHEET = 'BUDGET DATA';
+const BUDGET_TRANSFERS_SUMMARY_SHEET = 'ประวัติโอนงบประมาณ';
 const RAW_PROJECTS_SHEET = '_DATA_PROJECTS_JSON';
 const RAW_WORKFLOW_SHEET = '_DATA_WORKFLOW_JSON';
 const RAW_BUDGET_POOLS_SHEET = '_DATA_BUDGET_POOLS_JSON';
+const RAW_BUDGET_TRANSFERS_SHEET = '_DATA_BUDGET_TRANSFERS_JSON';
 const RAW_EXPENSE_CATEGORIES_SHEET = '_DATA_EXPENSE_CATEGORIES_JSON';
 const DEFAULT_DRIVE_FOLDER_ID = '1wyP35kgPzxgKWJN8nggjc4b6QIfsvcNN';
 const DEFAULT_DRIVE_FOLDER_NAME = 'เอกสารแนบ';
@@ -81,6 +83,10 @@ function doGet(e) {
       const rows = readChunkedJsonList_(ss, RAW_PROJECTS_SHEET);
       const steps = readChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET);
       const budgetPools = readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET);
+      const budgetTransfers = readChunkedJsonList_(
+        ss,
+        RAW_BUDGET_TRANSFERS_SHEET,
+      );
       const expenseCategories = readChunkedSingleJson_(
         ss,
         RAW_EXPENSE_CATEGORIES_SHEET,
@@ -93,6 +99,7 @@ function doGet(e) {
         projects: rows || [],
         steps: Array.isArray(steps) && steps.length > 0 ? steps : undefined,
         budgetPools: Array.isArray(budgetPools) ? budgetPools : [],
+        budgetTransfers: Array.isArray(budgetTransfers) ? budgetTransfers : [],
         expenseCategories:
           Array.isArray(expenseCategories) && expenseCategories.length > 0
             ? expenseCategories
@@ -474,6 +481,8 @@ function handleSyncProjects_(body) {
   const steps = Array.isArray(body.steps) ? body.steps : [];
   const hasBudgetPools = Array.isArray(body.budgetPools);
   const budgetPools = hasBudgetPools ? body.budgetPools : [];
+  const hasBudgetTransfers = Array.isArray(body.budgetTransfers);
+  const budgetTransfers = hasBudgetTransfers ? body.budgetTransfers : [];
   const hasExpenseCategories =
     Array.isArray(body.expenseCategories) && body.expenseCategories.length > 0;
 
@@ -534,6 +543,52 @@ function handleSyncProjects_(body) {
     poolSheet
       .getRange(1, 1, poolSummaryRows.length, poolSummaryRows[0].length)
       .setValues(poolSummaryRows);
+  }
+
+  if (hasBudgetTransfers) {
+    writeChunkedJsonList_(ss, RAW_BUDGET_TRANSFERS_SHEET, budgetTransfers);
+    let transferSheet = ss.getSheetByName(BUDGET_TRANSFERS_SUMMARY_SHEET);
+    if (!transferSheet) {
+      transferSheet = ss.insertSheet(BUDGET_TRANSFERS_SUMMARY_SHEET);
+    }
+    transferSheet.clearContents();
+    const transferRows = [
+      [
+        'id',
+        'ปีงบประมาณ',
+        'วันที่โอน',
+        'เลขที่เอกสาร',
+        'ประเภทการโอน',
+        'ต้นทาง',
+        'ปลายทาง',
+        'จำนวนเงิน (บาท)',
+        'เหตุผล',
+        'ผู้บันทึก',
+      ],
+    ];
+    budgetTransfers.forEach(function (t) {
+      const typeLabel =
+        t.transferType === 'from_external' ? 'โอนเข้าจากงบอื่น' : 'โอนระหว่างหมวด';
+      const sourceLabel =
+        t.transferType === 'from_external'
+          ? String(t.externalSource || '')
+          : String(t.fromPoolName || '');
+      transferRows.push([
+        String(t.id || ''),
+        Number(t.year || 0),
+        String(t.transferDate || ''),
+        String(t.docNo || ''),
+        typeLabel,
+        sourceLabel,
+        String(t.toPoolName || ''),
+        Number(t.amount || 0),
+        String(t.reason || ''),
+        String(t.createdBy || ''),
+      ]);
+    });
+    transferSheet
+      .getRange(1, 1, transferRows.length, transferRows[0].length)
+      .setValues(transferRows);
   }
 
   // อัปเดตชีตสรุป 'ทะเบียนจัดซื้อจัดจ้าง' ให้อ่านง่ายใน Google Sheet

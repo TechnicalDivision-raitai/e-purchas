@@ -2,6 +2,7 @@ import { SARABAN_ALLOWED_CATEGORIES } from '../data/constants';
 import type {
   AttachmentCategory,
   BudgetPool,
+  BudgetTransfer,
   ExpenseCategoryGroup,
   ProcurementState,
   ProjectRecord,
@@ -32,12 +33,14 @@ interface GoogleSheetPullResponse {
   rows?: ProjectRecord[];
   steps?: WorkflowStep[];
   budgetPools?: BudgetPool[];
+  budgetTransfers?: BudgetTransfer[];
   expenseCategories?: ExpenseCategoryGroup[];
   data?: {
     rows?: ProjectRecord[];
     projects?: ProjectRecord[];
     steps?: WorkflowStep[];
     budgetPools?: BudgetPool[];
+    budgetTransfers?: BudgetTransfer[];
     expenseCategories?: ExpenseCategoryGroup[];
   };
   error?: string;
@@ -85,6 +88,8 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
 
   const steps = payload.steps || payload.data?.steps;
   const budgetPools = payload.budgetPools || payload.data?.budgetPools;
+  const budgetTransfers =
+    payload.budgetTransfers || payload.data?.budgetTransfers;
   const expenseCategories =
     payload.expenseCategories || payload.data?.expenseCategories;
 
@@ -92,6 +97,7 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
     !Array.isArray(rows) &&
     !Array.isArray(steps) &&
     !Array.isArray(budgetPools) &&
+    !Array.isArray(budgetTransfers) &&
     !Array.isArray(expenseCategories)
   ) {
     return null;
@@ -101,6 +107,7 @@ export async function fetchProjectsFromGoogleSheet(): Promise<Partial<Procuremen
     ...(Array.isArray(rows) ? { rows } : {}),
     ...(Array.isArray(steps) && steps.length > 0 ? { steps } : {}),
     ...(Array.isArray(budgetPools) ? { budgetPools } : {}),
+    ...(Array.isArray(budgetTransfers) ? { budgetTransfers } : {}),
     ...(Array.isArray(expenseCategories) && expenseCategories.length > 0
       ? { expenseCategories }
       : {}),
@@ -137,6 +144,7 @@ export async function syncProjectsToGoogleSheet(
       rows: sanitizedRows,
       projects: sanitizedRows,
       budgetPools: state.budgetPools || [],
+      budgetTransfers: state.budgetTransfers || [],
       ...(Array.isArray(state.expenseCategories) && state.expenseCategories.length > 0
         ? { expenseCategories: state.expenseCategories }
         : {}),

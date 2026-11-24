@@ -10,6 +10,7 @@ import {
 import type {
   AttachmentCategory,
   BudgetPool,
+  BudgetTransfer,
   CommitteeRole,
   FinancialSums,
   ImportErrorItem,
@@ -147,6 +148,7 @@ export function calculateFinancialSums(rows: ProjectRecord[]): FinancialSums {
 export function buildExcelTables(
   rows: ProjectRecord[],
   budgetPools?: BudgetPool[],
+  budgetTransfers?: BudgetTransfer[],
 ): WorkbookTables {
   const tables: WorkbookTables = Object.fromEntries(
     Object.entries(EXCEL_SCHEMA).map(([sheet, headers]) => [sheet, [[...headers]]]),
@@ -205,6 +207,40 @@ export function buildExcelTables(
         reserved,
         allocated - (agreed + reserved),
         pool.notes || '',
+      ]);
+    }
+  }
+
+  if (Array.isArray(budgetTransfers) && budgetTransfers.length > 0) {
+    tables['โอนงบประมาณ'] = [
+      [
+        'ปีงบประมาณ',
+        'วันที่โอน',
+        'เลขที่เอกสาร',
+        'ประเภทการโอน',
+        'ต้นทาง',
+        'หมวดงบปลายทาง',
+        'จำนวนเงิน (บาท)',
+        'เหตุผล',
+        'ผู้บันทึก',
+      ],
+    ];
+    for (const t of budgetTransfers) {
+      const isExternal = t.transferType === 'from_external';
+      const sourcePool = t.fromPoolId ? poolById.get(t.fromPoolId) : undefined;
+      const targetPool = poolById.get(t.toPoolId);
+      tables['โอนงบประมาณ'].push([
+        Number(t.year),
+        t.transferDate || '',
+        t.docNo || '',
+        isExternal ? 'โอนเข้าจากงบอื่นๆ' : 'โอนระหว่างหมวดงบ',
+        isExternal
+          ? t.externalSource || ''
+          : sourcePool?.name || t.fromPoolName || '',
+        targetPool?.name || t.toPoolName || '',
+        Number(t.amount || 0),
+        t.reason || '',
+        t.createdBy || '',
       ]);
     }
   }

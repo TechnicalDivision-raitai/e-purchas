@@ -171,6 +171,25 @@ export interface BudgetPool {
   updatedAt?: string;
 }
 
+export type BudgetTransferType = 'between_pools' | 'from_external';
+
+export interface BudgetTransfer {
+  id: string;
+  year: number;
+  transferDate: string;
+  docNo: string;
+  transferType: BudgetTransferType;
+  fromPoolId?: string;
+  fromPoolName?: string;
+  externalSource?: string;
+  toPoolId: string;
+  toPoolName: string;
+  amount: number;
+  reason?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
 export interface ProjectRecord {
   id: string;
   code: string;
@@ -214,6 +233,7 @@ export interface ProcurementState {
   steps: WorkflowStep[];
   rows: ProjectRecord[];
   budgetPools?: BudgetPool[];
+  budgetTransfers?: BudgetTransfer[];
   expenseCategories?: ExpenseCategoryGroup[];
 }
 
