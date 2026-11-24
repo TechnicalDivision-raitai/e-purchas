@@ -29,7 +29,21 @@ export function ExcelPage() {
   const handleDownloadTemplate = () => {
     try {
       const example = createExampleRecord(state.steps[0]?.id || 's1');
-      exportWorkbookFile(buildExcelTables([example]), 'แม่แบบครบทุกหมวด.xlsx');
+      const firstPool = (state.budgetPools || [])[0];
+      if (firstPool) {
+        example.budget = 0;
+        example.budgetPoolId = firstPool.id;
+        example.planName = firstPool.planName;
+        example.workName = firstPool.workName;
+        example.budgetType = firstPool.budgetType;
+        example.expenseCategory = firstPool.expenseCategory;
+        example.expenseSubCategory = firstPool.expenseSubCategory;
+        example.fund = firstPool.fund;
+      }
+      exportWorkbookFile(
+        buildExcelTables([example], firstPool ? [firstPool] : undefined),
+        'แม่แบบครบทุกหมวด.xlsx',
+      );
       showToast('ดาวน์โหลดแม่แบบครบทุกหมวดแล้ว');
     } catch (err) {
       showToast(`สร้างแม่แบบไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
@@ -80,6 +94,7 @@ export function ExcelPage() {
         user.id,
         importYear,
         state.steps,
+        state.budgetPools || [],
       );
 
       setImportPlan({
@@ -289,7 +304,7 @@ export function ExcelPage() {
                   {importPlan.items.length > 0 && (
                     <div className="max-h-[180px] space-y-1.5 overflow-y-auto rounded-md border border-[#b4cde8] bg-white p-3 text-xs">
                       {importPlan.items.map((item) => (
-                        <p key={item.record.code} className="flex items-center gap-2 text-[#1c3c61]">
+                        <p key={item.record.code} className="flex flex-wrap items-center gap-2 text-[#1c3c61]">
                           <span
                             className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
                               item.mode === 'update'
@@ -303,6 +318,15 @@ export function ExcelPage() {
                           <span className="truncate">
                             · {item.record.title} · ปี {item.record.year}
                           </span>
+                          {item.linkedPoolName ? (
+                            <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#1d4ed8]">
+                              BUDGET DATA: {item.linkedPoolName}
+                            </span>
+                          ) : (
+                            <span className="rounded border border-[#f2d091] bg-[#fff8e6] px-1.5 py-0.5 text-[10px] font-medium text-[#8a5b11]">
+                              ยังไม่ผูก BUDGET DATA
+                            </span>
+                          )}
                         </p>
                       ))}
                     </div>

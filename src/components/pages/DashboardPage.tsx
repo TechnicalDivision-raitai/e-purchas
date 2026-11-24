@@ -176,17 +176,10 @@ export function DashboardPage({
     ].filter(Boolean);
   }, [state.rows, budgetPools]);
 
-  // Apply local funding/mode and expense category filter on top of global filteredRows
+  // Apply local funding source and expense category filter on top of global filteredRows
   const dashboardRows = useMemo(() => {
     return filteredRows.filter((r) => {
-      if (fundScope === '__STANDALONE__' && r.budgetPoolId) return false;
-      if (fundScope === '__BUDGET_DATA__' && !r.budgetPoolId) return false;
-      if (
-        fundScope &&
-        fundScope !== '__STANDALONE__' &&
-        fundScope !== '__BUDGET_DATA__' &&
-        String(r.fund || '').trim() !== fundScope
-      ) {
+      if (fundScope && String(r.fund || '').trim() !== fundScope) {
         return false;
       }
       if (expenseCategoryFilter) {
@@ -200,12 +193,7 @@ export function DashboardPage({
 
   const scopedBudgetPools = useMemo(() => {
     return budgetPools.filter((p) => {
-      if (fundScope === '__STANDALONE__') return false;
-      if (
-        fundScope &&
-        fundScope !== '__BUDGET_DATA__' &&
-        String(p.fund || '').trim() !== fundScope
-      ) {
+      if (fundScope && String(p.fund || '').trim() !== fundScope) {
         return false;
       }
       if (expenseCategoryFilter) {
@@ -452,7 +440,7 @@ export function DashboardPage({
 
         <label className="block rounded-xl border border-[#c6daf0] bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(15,42,74,0.03)] transition focus-within:border-[#1c64c7] focus-within:ring-2 focus-within:ring-[#bfdcff]">
           <span className="block text-[11px] font-semibold text-[#5a7696]">
-            หมวดงบประมาณ / แหล่งงบ
+            แหล่งงบประมาณ
           </span>
           <select
             value={fundScope}
@@ -460,8 +448,6 @@ export function DashboardPage({
             className="mt-1 block w-full cursor-pointer bg-transparent text-[13px] font-bold text-[#0f2a4a] focus:outline-none"
           >
             <option value="">ทั้งหมด</option>
-            <option value="__STANDALONE__">โครงการเดี่ยวเท่านั้น</option>
-            <option value="__BUDGET_DATA__">BUDGET DATA (งบหมวดวัสดุ)</option>
             {fundSources.map((fund) => (
               <option key={fund} value={fund}>
                 {fund}
@@ -941,7 +927,7 @@ export function DashboardPage({
         <div className="p-4 sm:p-5">
           {expenseHierarchy.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[#c8dcf2] bg-[#f7fbff] px-5 py-7 text-center text-xs text-[#567496]">
-              ยังไม่มีรายการที่จำแนกหมวดค่าใช้จ่ายในชุดข้อมูลนี้ — ระบุหมวดค่าใช้จ่ายและประเภทย่อยได้ในหน้าบันทึกโครงการหรือ BUDGET DATA
+              ยังไม่มีรายการที่จำแนกหมวดค่าใช้จ่ายในชุดข้อมูลนี้ — เพิ่มหมวดงบประมาณแบบ 5 ระดับในหน้า BUDGET DATA และผูกโครงการที่หน้าทะเบียนโครงการ
             </div>
           ) : (
             <div className="space-y-3">
@@ -1127,6 +1113,20 @@ export function DashboardPage({
                                       <div className="mt-0.5 truncate text-[10.5px] font-medium text-[#1d5ab5]">
                                         {classificationText}
                                       </div>
+                                      {singlePool &&
+                                        (singlePool.planName ||
+                                          singlePool.workName ||
+                                          singlePool.budgetType) && (
+                                          <div className="mt-0.5 truncate text-[10px] text-[#527092]">
+                                            {[
+                                              singlePool.planName,
+                                              singlePool.workName,
+                                              singlePool.budgetType,
+                                            ]
+                                              .filter(Boolean)
+                                              .join(' › ')}
+                                          </div>
+                                        )}
                                     </div>
 
                                     <span

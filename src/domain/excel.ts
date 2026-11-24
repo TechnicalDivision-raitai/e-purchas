@@ -57,6 +57,10 @@ export const EXCEL_SCHEMA: Record<string, string[]> = {
     'ขั้นตอน',
     'หมวดค่าใช้จ่าย',
     'ประเภทย่อย',
+    'หมวด BUDGET DATA',
+    'แผนงาน',
+    'งาน',
+    'งบ',
   ],
   'TORและราคากลาง': [
     'รหัสโครงการ',
@@ -148,13 +152,20 @@ export function buildExcelTables(
     Object.entries(EXCEL_SCHEMA).map(([sheet, headers]) => [sheet, [[...headers]]]),
   );
 
+  const poolById = new Map<string, BudgetPool>(
+    (budgetPools || []).map((p) => [p.id, p]),
+  );
+
   if (Array.isArray(budgetPools) && budgetPools.length > 0) {
     tables['BUDGET DATA'] = [
       [
         'ปีงบประมาณ',
         'รหัสหมวด',
-        'หมวดค่าใช้จ่าย',
-        'ประเภทย่อย',
+        'แผนงาน',
+        'งาน',
+        'งบ',
+        'หมวด',
+        'ประเภทค่าใช้จ่าย',
         'ชื่อหมวดวงเงิน',
         'แหล่งงบประมาณ',
         'หน่วยงาน',
@@ -180,6 +191,9 @@ export function buildExcelTables(
       tables['BUDGET DATA'].push([
         Number(pool.year),
         pool.code || '',
+        pool.planName || '',
+        pool.workName || '',
+        pool.budgetType || '',
         pool.expenseCategory || '',
         pool.expenseSubCategory || '',
         pool.name,
@@ -198,6 +212,7 @@ export function buildExcelTables(
   for (const r of rows) {
     const code = String(r.code);
     const d = r.projectDetails || {};
+    const linkedPool = r.budgetPoolId ? poolById.get(r.budgetPoolId) : undefined;
 
     tables['ข้อมูลทั่วไป'].push([
       code,
@@ -205,15 +220,19 @@ export function buildExcelTables(
       r.title,
       r.type,
       r.method,
-      r.fund,
-      Number(r.budget),
+      r.fund || linkedPool?.fund || '',
+      Number(r.budget || 0),
       r.responsibleName || '',
       r.start,
       r.notes,
       r.status,
       r.step,
-      r.expenseCategory || '',
-      r.expenseSubCategory || '',
+      r.expenseCategory || linkedPool?.expenseCategory || '',
+      r.expenseSubCategory || linkedPool?.expenseSubCategory || '',
+      linkedPool?.name || '',
+      r.planName || linkedPool?.planName || '',
+      r.workName || linkedPool?.workName || '',
+      r.budgetType || linkedPool?.budgetType || '',
     ]);
 
     tables['TORและราคากลาง'].push([
@@ -331,9 +350,14 @@ export function buildExcelTables(
   }
 
   const s = calculateFinancialSums(rows);
+  const poolAllocatedSum = (budgetPools || []).reduce(
+    (acc, p) => acc + Math.max(0, Number(p.allocatedBudget || 0)),
+    0,
+  );
+  const totalBudgetDisplay = poolAllocatedSum > 0 ? poolAllocatedSum : s.budget;
   tables['สรุปวงเงิน'] = [
     ['รายการ', 'จำนวนเงินบาท'],
-    ['วงเงินงบประมาณ (ไม่รวมพักงาน/ยกเลิก)', s.budget],
+    ['วงเงินงบประมาณรวม (BUDGET DATA)', totalBudgetDisplay],
     ['ราคากลาง (ไม่รวมพักงาน/ยกเลิก)', s.reference],
     ['วงเงินตกลง (ไม่รวมพักงาน/ยกเลิก)', s.agreed],
     ['จำนวนเงินฎีกา (ไม่รวมพักงาน/ยกเลิก)', s.voucher],
@@ -365,6 +389,7 @@ interface ProjectGroup {
   sequences: Set<string>;
   files: Map<string, FileAccumulator>;
   hasAttachmentRows: boolean;
+  linkedPoolName?: string;
 }
 
 export function previewExcelImport(
@@ -373,6 +398,7 @@ export function previewExcelImport(
   userId: string,
   targetYear: string,
   steps: WorkflowStep[],
+  budgetPools: BudgetPool[] = [],
 ): Omit<ImportPlan, 'targetYear'> {
   if (
     targetYear !== 'file' &&
@@ -423,17 +449,22 @@ export function previewExcelImport(
     }
 
     const expectedHeaders = EXCEL_SCHEMA[sheetName];
-    const legacyHeaders =
+    const headerCandidates =
       sheetName === 'สั่งซื้อสั่งจ้าง'
-        ? expectedHeaders.slice(0, 7)
+        ? [expectedHeaders, expectedHeaders.slice(0, 7)]
         : sheetName === 'ข้อมูลทั่วไป'
-          ? expectedHeaders.slice(0, 12)
-          : null;
+          ? [
+              expectedHeaders,
+              expectedHeaders.slice(0, 15),
+              expectedHeaders.slice(0, 14),
+              expectedHeaders.slice(0, 12),
+            ]
+          : [expectedHeaders];
     const headerMatches =
       Array.isArray(matrix) &&
-      (JSON.stringify(matrix[0]) === JSON.stringify(expectedHeaders) ||
-        (legacyHeaders &&
-          JSON.stringify(matrix[0]) === JSON.stringify(legacyHeaders)));
+      headerCandidates.some(
+        (candidate) => JSON.stringify(matrix[0]) === JSON.stringify(candidate),
+      );
 
     if (!headerMatches) {
       throw new Error(`หัวคอลัมน์ชีต ${sheetName} ไม่ตรงกับแม่แบบ`);
@@ -485,28 +516,82 @@ export function previewExcelImport(
       continue;
     }
 
-    if (typeof a[6] !== 'number') {
-      pushError('ข้อมูลทั่วไป', row, code, 'วงเงินงบประมาณต้องเป็นเซลล์ตัวเลข');
+    const rawBudget = a[6];
+    const parsedBudget =
+      rawBudget === '' || rawBudget == null ? 0 : Number(rawBudget);
+    if (
+      (rawBudget !== '' && rawBudget != null && typeof rawBudget !== 'number') ||
+      !Number.isFinite(parsedBudget) ||
+      parsedBudget < 0
+    ) {
+      pushError('ข้อมูลทั่วไป', row, code, 'วงเงินงบประมาณต้องเป็นเซลล์ตัวเลขตั้งแต่ศูนย์');
       continue;
+    }
+
+    const rowYear = Number(dest);
+    const poolRefText = String(a[14] ?? '').trim();
+    const rowCat = String(a[12] ?? existingRecord?.expenseCategory ?? '').trim();
+    const rowSub = String(a[13] ?? existingRecord?.expenseSubCategory ?? '').trim();
+    const rowPlan = String(a[15] ?? existingRecord?.planName ?? '').trim();
+    const rowWork = String(a[16] ?? existingRecord?.workName ?? '').trim();
+    const rowBudgetType = String(a[17] ?? existingRecord?.budgetType ?? '').trim();
+
+    const yearPools = budgetPools.filter((bp) => Number(bp.year) === rowYear);
+    let matchedPool: BudgetPool | undefined;
+
+    if (poolRefText) {
+      const targetKey = poolRefText.toLowerCase();
+      matchedPool = yearPools.find(
+        (bp) =>
+          bp.name.trim().toLowerCase() === targetKey ||
+          (bp.code && bp.code.trim().toLowerCase() === targetKey) ||
+          bp.id.toLowerCase() === targetKey,
+      );
+      if (!matchedPool) {
+        pushError(
+          'ข้อมูลทั่วไป',
+          row,
+          code,
+          `ไม่พบหมวด BUDGET DATA "${poolRefText}" ในปีงบฯ ${rowYear}`,
+        );
+        continue;
+      }
+    } else if (existingRecord?.budgetPoolId) {
+      matchedPool = yearPools.find((bp) => bp.id === existingRecord.budgetPoolId);
+    } else if (rowSub) {
+      const subMatches = yearPools.filter(
+        (bp) =>
+          String(bp.expenseSubCategory || '').trim().toLowerCase() ===
+            rowSub.toLowerCase() &&
+          (!rowCat ||
+            String(bp.expenseCategory || '').trim().toLowerCase() ===
+              rowCat.toLowerCase()),
+      );
+      if (subMatches.length === 1) {
+        matchedPool = subMatches[0];
+      }
     }
 
     const record: ProjectRecord = {
       id: existingRecord?.id || '',
       code,
-      year: Number(dest),
+      year: rowYear,
       title: String(a[2] || ''),
       type: String(a[3] || '') as ProjectType,
       method: String(a[4] || ''),
-      fund: String(a[5] || ''),
-      budget: a[6],
+      fund: String(a[5] || '').trim() || matchedPool?.fund || '',
+      budget: matchedPool ? 0 : parsedBudget,
+      budgetPoolId: matchedPool?.id,
       responsibleName: String(a[7] || '').trim(),
       start: String(a[8] || ''),
       notes: String(a[9] || ''),
       status: (a[10] || existingRecord?.status || 'รอจัดทำTOR และราคากลาง') as ProjectStatus,
       step: normalizeLegacyStepId(String(a[11] || existingRecord?.step || steps[0].id)),
-      expenseCategory: String(a[12] ?? existingRecord?.expenseCategory ?? '').trim() || undefined,
-      expenseSubCategory:
-        String(a[13] ?? existingRecord?.expenseSubCategory ?? '').trim() || undefined,
+      planName: rowPlan || matchedPool?.planName || undefined,
+      workName: rowWork || matchedPool?.workName || undefined,
+      budgetType: rowBudgetType || matchedPool?.budgetType || undefined,
+      expenseCategory: rowCat || matchedPool?.expenseCategory || undefined,
+      expenseSubCategory: rowSub || matchedPool?.expenseSubCategory || undefined,
       department: existingRecord?.department || DEFAULT_DEPARTMENT,
       assignee: existingRecord?.assignee || userId,
       reference: 0,
@@ -531,6 +616,7 @@ export function previewExcelImport(
       sequences: new Set(),
       files: new Map(),
       hasAttachmentRows: false,
+      linkedPoolName: matchedPool?.name,
     });
   }
 
@@ -899,6 +985,7 @@ export function previewExcelImport(
         mode: group.mode,
         existingId: group.existingId,
         hasAttachmentRows: group.hasAttachmentRows,
+        linkedPoolName: group.linkedPoolName,
       });
       good.push(r);
     } catch (err) {

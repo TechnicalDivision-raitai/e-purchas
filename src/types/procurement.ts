@@ -158,6 +158,9 @@ export interface BudgetPool {
   year: number;
   code: string;
   name: string;
+  planName?: string;
+  workName?: string;
+  budgetType?: string;
   expenseCategory?: string;
   expenseSubCategory?: string;
   fund: string;
@@ -176,6 +179,9 @@ export interface ProjectRecord {
   department: string;
   responsibleName: string;
   type: ProjectType;
+  planName?: string;
+  workName?: string;
+  budgetType?: string;
   expenseCategory?: string;
   expenseSubCategory?: string;
   method: string;
@@ -256,6 +262,7 @@ export interface ImportPreviewItem {
   mode: 'insert' | 'update';
   existingId?: string;
   hasAttachmentRows: boolean;
+  linkedPoolName?: string;
 }
 
 export interface ImportPlan {

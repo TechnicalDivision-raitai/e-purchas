@@ -11,14 +11,23 @@
  *    - POST action="deleteProcurementQueue" (ลบคิวได้ทุกสถานะ)
  */
 
+const DEFAULT_SPREADSHEET_ID = '19oCgv21-WkPLYthCdqUNFmqaPCeh2G5Dfuo10lcYuZw';
 const DEFAULT_SHEET_NAME = 'ทะเบียนจัดซื้อจัดจ้าง';
 const BUDGET_POOLS_SUMMARY_SHEET = 'BUDGET DATA';
 const RAW_PROJECTS_SHEET = '_DATA_PROJECTS_JSON';
 const RAW_WORKFLOW_SHEET = '_DATA_WORKFLOW_JSON';
 const RAW_BUDGET_POOLS_SHEET = '_DATA_BUDGET_POOLS_JSON';
 const RAW_EXPENSE_CATEGORIES_SHEET = '_DATA_EXPENSE_CATEGORIES_JSON';
-const DEFAULT_DRIVE_FOLDER_NAME = 'เอกสารจัดซื้อจัดจ้าง_กองช่าง';
+const DEFAULT_DRIVE_FOLDER_ID = '1wyP35kgPzxgKWJN8nggjc4b6QIfsvcNN';
+const DEFAULT_DRIVE_FOLDER_NAME = 'เอกสารแนบ';
 const CHUNK_SIZE = 40000; // ป้องกันเกินลิมิต 50,000 ตัวอักษร/เซลล์ ของ Google Sheet
+
+function getSpreadsheet_() {
+  return (
+    SpreadsheetApp.getActiveSpreadsheet() ||
+    SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID)
+  );
+}
 
 const QUEUE_SHEET_NAME = 'SarabanProcurementQueue';
 
@@ -68,7 +77,7 @@ function doGet(e) {
     const action = String(params.action || 'fetch').trim();
 
     if (action === 'fetch') {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const ss = getSpreadsheet_();
       const rows = readChunkedJsonList_(ss, RAW_PROJECTS_SHEET);
       const steps = readChunkedSingleJson_(ss, RAW_WORKFLOW_SHEET);
       const budgetPools = readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET);
@@ -455,7 +464,7 @@ function writeChunkedJsonList_(ss, sheetName, list) {
 }
 
 function handleSyncProjects_(body) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   const sheetName = String(body.sheetName || DEFAULT_SHEET_NAME).trim();
   const rows = Array.isArray(body.rows)
     ? body.rows
@@ -493,8 +502,11 @@ function handleSyncProjects_(body) {
         'id',
         'ปีงบประมาณ',
         'รหัสหมวด',
-        'หมวดค่าใช้จ่าย',
-        'ประเภทย่อย',
+        '1. แผนงาน',
+        '2. งาน',
+        '3. งบ',
+        '4. หมวด',
+        '5. ประเภทค่าใช้จ่าย',
         'ชื่อหมวดวงเงิน',
         'แหล่งงบประมาณ',
         'หน่วยงาน',
@@ -507,6 +519,9 @@ function handleSyncProjects_(body) {
         String(p.id || ''),
         Number(p.year || 0),
         String(p.code || ''),
+        String(p.planName || ''),
+        String(p.workName || ''),
+        String(p.budgetType || ''),
         String(p.expenseCategory || ''),
         String(p.expenseSubCategory || ''),
         String(p.name || ''),
@@ -533,11 +548,15 @@ function handleSyncProjects_(body) {
       'เลขทะเบียน',
       'ปีงบประมาณ',
       'ชื่อโครงการ',
-      'หมวดค่าใช้จ่าย',
-      'ประเภทย่อย',
+      'หมวด BUDGET DATA',
+      'แผนงาน',
+      'งาน',
+      'งบ',
+      'หมวด',
+      'ประเภทค่าใช้จ่าย',
       'สถานะ',
       'วิธีจัดซื้อจัดจ้าง',
-      'งบประมาณ',
+      'ราคากลาง / งบอ้างอิง',
       'วงเงินตกลง',
       'ผู้ขาย / ผู้รับจ้าง',
       'ผู้รับผิดชอบ',
@@ -551,22 +570,40 @@ function handleSyncProjects_(body) {
   );
   rows.forEach(function (r) {
     const linkedPool = r.budgetPoolId ? poolLookup[String(r.budgetPoolId)] : null;
+    const poolName = String((linkedPool && linkedPool.name) || '');
+    const planName = String(
+      r.planName || (linkedPool && linkedPool.planName) || '',
+    );
+    const workName = String(
+      r.workName || (linkedPool && linkedPool.workName) || '',
+    );
+    const budgetType = String(
+      r.budgetType || (linkedPool && linkedPool.budgetType) || '',
+    );
     const expCat = String(
       r.expenseCategory || (linkedPool && linkedPool.expenseCategory) || '',
     );
     const expSub = String(
       r.expenseSubCategory || (linkedPool && linkedPool.expenseSubCategory) || '',
     );
+    const displayBudget =
+      Number(r.budget || 0) > 0
+        ? Number(r.budget || 0)
+        : Number(r.reference || 0);
     summaryRows.push([
       String(r.id || ''),
       String(r.code || ''),
       Number(r.year || 0),
       String(r.title || ''),
+      poolName,
+      planName,
+      workName,
+      budgetType,
       expCat,
       expSub,
       String(r.status || ''),
       String(r.method || ''),
-      Number(r.budget || 0),
+      displayBudget,
       Number(r.agreed || 0),
       String(r.vendor || ''),
       String(r.responsibleName || ''),
@@ -605,9 +642,10 @@ function ensureViewSharing_(driveResource) {
 }
 
 function getOrCreateDriveFolder_(folderId) {
+  const resolvedFolderId = String(folderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
   let folder;
-  if (folderId) {
-    folder = DriveApp.getFolderById(folderId);
+  if (resolvedFolderId) {
+    folder = DriveApp.getFolderById(resolvedFolderId);
   } else {
     const folders = DriveApp.getFoldersByName(DEFAULT_DRIVE_FOLDER_NAME);
     folder = folders.hasNext()
@@ -618,11 +656,33 @@ function getOrCreateDriveFolder_(folderId) {
   return folder;
 }
 
+function getOrCreateSubFolder_(parentFolder, folderName) {
+  const cleanName = String(folderName || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ');
+  if (!cleanName) return parentFolder;
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const existing = parentFolder.getFoldersByName(cleanName);
+    const subFolder = existing.hasNext()
+      ? existing.next()
+      : parentFolder.createFolder(cleanName);
+    ensureViewSharing_(subFolder);
+    return subFolder;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function handleUploadFile_(body) {
   const fileName = String(body.fileName || 'attachment.bin');
   const mimeType = String(body.mimeType || 'application/octet-stream');
   const base64Data = String(body.base64Data || '');
-  const folderId = String(body.folderId || '').trim();
+  const folderId = String(body.folderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
+  const projectCode = String(body.projectCode || '').trim();
 
   if (!base64Data) {
     throw new Error('ไม่พบข้อมูลไฟล์สำหรับอัปโหลด');
@@ -630,8 +690,11 @@ function handleUploadFile_(body) {
 
   const bytes = Utilities.base64Decode(base64Data);
   const blob = Utilities.newBlob(bytes, mimeType, fileName);
-  const folder = getOrCreateDriveFolder_(folderId);
-  const created = folder.createFile(blob);
+  const rootFolder = getOrCreateDriveFolder_(folderId);
+  const targetFolder = projectCode
+    ? getOrCreateSubFolder_(rootFolder, projectCode)
+    : rootFolder;
+  const created = targetFolder.createFile(blob);
 
   // ตั้งค่าสิทธิ์แชร์อัตโนมัติให้ทุกคนที่มีลิงก์สามารถเปิดดูไฟล์ได้ทันที
   ensureViewSharing_(created);
@@ -643,17 +706,19 @@ function handleUploadFile_(body) {
     status: 'ok',
     success: true,
     fileId: fileId,
+    folderId: targetFolder.getId(),
+    folderName: targetFolder.getName(),
     url: shareUrl,
     webViewLink: shareUrl,
   };
 }
 
 /**
- * ฟังก์ชันช่วยปลดล็อกสิทธิ์ไฟล์เดิมทั้งหมดในโฟลเดอร์ "เอกสารจัดซื้อจัดจ้าง_กองช่าง"
+ * ฟังก์ชันช่วยปลดล็อกสิทธิ์ไฟล์เดิมทั้งหมดในโฟลเดอร์ "เอกสารแนบ"
  * วิธีใช้: เปิดหน้า Apps Script Editor -> เลือกฟังก์ชัน fixExistingAttachmentPermissions -> กด Run (เรียกใช้)
  */
 function fixExistingAttachmentPermissions() {
-  const folder = getOrCreateDriveFolder_('');
+  const folder = getOrCreateDriveFolder_(DEFAULT_DRIVE_FOLDER_ID);
   let updatedCount = 0;
 
   function processFolder(currentFolder) {
@@ -681,7 +746,7 @@ function fixExistingAttachmentPermissions() {
  * ========================================================================== */
 
 function handleGetProcurementOptions_(fiscalYearParam) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   let rows = readChunkedJsonList_(ss, RAW_PROJECTS_SHEET);
 
   // Fallback อ่านจากชีต 'ทะเบียนจัดซื้อจัดจ้าง' ตามชื่อหัวคอลัมน์จริง หากยังไม่มีข้อมูล JSON
@@ -706,7 +771,7 @@ function handleGetProcurementOptions_(fiscalYearParam) {
       const colTitle = findCol(['ชื่อโครงการ', 'รายการ', 'title']);
       const colStatus = findCol(['สถานะ', 'status']);
       const colMethod = findCol(['วิธี', 'method']);
-      const colBudget = findCol(['งบประมาณ', 'วงเงิน', 'budget']);
+      const colBudget = findCol(['ราคากลาง', 'งบประมาณ', 'วงเงินตกลง', 'วงเงิน', 'budget']);
 
       rows = vals.slice(1).map(function (r, idx) {
         const code = colCode >= 0 ? String(r[colCode] || '') : String(r[0] || '');
@@ -724,6 +789,11 @@ function handleGetProcurementOptions_(fiscalYearParam) {
     }
   }
 
+  const poolLookup = {};
+  (readChunkedJsonList_(ss, RAW_BUDGET_POOLS_SHEET) || []).forEach(function (p) {
+    if (p && p.id) poolLookup[String(p.id)] = p;
+  });
+
   const fyFilter = String(fiscalYearParam || 'all').trim();
   const data = (rows || [])
     .filter(function (r) {
@@ -733,6 +803,13 @@ function handleGetProcurementOptions_(fiscalYearParam) {
     })
     .map(function (r) {
       const thaiStatus = String(r.status || '');
+      const linkedPool = r.budgetPoolId ? poolLookup[String(r.budgetPoolId)] : null;
+      const effectiveBudget =
+        Number(r.budget || 0) > 0
+          ? Number(r.budget || 0)
+          : Number(r.agreed || 0) > 0
+            ? Number(r.agreed || 0)
+            : Number(r.reference || 0);
       return {
         id: String(r.id || ''),
         projectCode: String(r.code || ''),
@@ -741,7 +818,18 @@ function handleGetProcurementOptions_(fiscalYearParam) {
         status: STATUS_TO_CODE[thaiStatus] || thaiStatus,
         statusLabel: thaiStatus,
         method: String(r.method || ''),
-        budget: Number(r.budget || 0),
+        budget: effectiveBudget,
+        budgetPoolId: String(r.budgetPoolId || ''),
+        budgetPoolName: String((linkedPool && linkedPool.name) || ''),
+        planName: String(r.planName || (linkedPool && linkedPool.planName) || ''),
+        workName: String(r.workName || (linkedPool && linkedPool.workName) || ''),
+        budgetType: String(r.budgetType || (linkedPool && linkedPool.budgetType) || ''),
+        expenseCategory: String(
+          r.expenseCategory || (linkedPool && linkedPool.expenseCategory) || '',
+        ),
+        expenseSubCategory: String(
+          r.expenseSubCategory || (linkedPool && linkedPool.expenseSubCategory) || '',
+        ),
       };
     });
 
@@ -752,7 +840,7 @@ function handleGetProcurementOptions_(fiscalYearParam) {
 }
 
 function getOrCreateQueueSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   let sheet = ss.getSheetByName(QUEUE_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(QUEUE_SHEET_NAME);

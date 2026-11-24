@@ -12,7 +12,13 @@ import {
   X,
 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import { DEFAULT_DEPARTMENT } from '../../data/constants';
+import {
+  BUDGET_GROUP_PRESETS,
+  BUDGET_GROUP_TO_CATEGORIES,
+  BUDGET_PLAN_PRESETS,
+  BUDGET_WORK_PRESETS,
+  DEFAULT_DEPARTMENT,
+} from '../../data/constants';
 import {
   calculateBudgetPoolUsageList,
   getProjectPoolCommitment,
@@ -21,7 +27,7 @@ import {
 } from '../../domain/budgetPools';
 import {
   findParentCategoryForSubCategory,
-  formatExpenseClassification,
+  formatBudgetHierarchyPath,
   getEffectiveExpenseCatalog,
   getSubCategoriesForCategory,
   suggestPoolNameFromSubCategory,
@@ -49,6 +55,9 @@ interface PoolDraft {
   id: string;
   year: number;
   code: string;
+  planName: string;
+  workName: string;
+  budgetType: string;
   expenseCategory: string;
   expenseSubCategory: string;
   name: string;
@@ -63,6 +72,9 @@ function createEmptyPoolDraft(defaultYear: number): PoolDraft {
     id: '',
     year: defaultYear,
     code: '',
+    planName: '',
+    workName: '',
+    budgetType: 'งบดำเนินงาน',
     expenseCategory: 'ค่าวัสดุ',
     expenseSubCategory: '',
     name: '',
@@ -102,6 +114,7 @@ export function BudgetPoolsPage({
   );
   const [formError, setFormError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<BudgetPoolUsage | null>(null);
+  const [confirmUnlinkOnDelete, setConfirmUnlinkOnDelete] = useState(false);
 
   const expenseCatalog = useMemo(
     () =>
@@ -113,10 +126,53 @@ export function BudgetPoolsPage({
     [state.expenseCategories, state.rows, budgetPools],
   );
 
-  const mainCategorySuggestions = useMemo(
-    () => expenseCatalog.map((g) => g.name),
-    [expenseCatalog],
+  const planSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_PLAN_PRESETS,
+        ...budgetPools.map((p) => p.planName),
+        ...state.rows.map((r) => r.planName),
+      ]),
+    [budgetPools, state.rows],
   );
+
+  const workSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_WORK_PRESETS,
+        ...budgetPools
+          .filter(
+            (p) =>
+              !draft.planName.trim() ||
+              !p.planName ||
+              p.planName.trim().toLowerCase() ===
+                draft.planName.trim().toLowerCase(),
+          )
+          .map((p) => p.workName),
+        ...budgetPools.map((p) => p.workName),
+        ...state.rows.map((r) => r.workName),
+      ]),
+    [budgetPools, state.rows, draft.planName],
+  );
+
+  const budgetTypeSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_GROUP_PRESETS,
+        ...budgetPools.map((p) => p.budgetType),
+        ...state.rows.map((r) => r.budgetType),
+      ]),
+    [budgetPools, state.rows],
+  );
+
+  const mainCategorySuggestions = useMemo(() => {
+    const preferred =
+      BUDGET_GROUP_TO_CATEGORIES[draft.budgetType.trim()] || [];
+    return collectNormalizedSuggestions([
+      ...preferred,
+      ...expenseCatalog.map((g) => g.name),
+    ]);
+  }, [expenseCatalog, draft.budgetType]);
 
   const draftSubCategorySuggestions = useMemo(
     () => getSubCategoriesForCategory(expenseCatalog, draft.expenseCategory),
@@ -214,6 +270,9 @@ export function BudgetPoolsPage({
       id: pool.id,
       year: pool.year,
       code: pool.code || '',
+      planName: pool.planName || '',
+      workName: pool.workName || '',
+      budgetType: pool.budgetType || '',
       expenseCategory: pool.expenseCategory || '',
       expenseSubCategory: pool.expenseSubCategory || '',
       name: pool.name,
@@ -234,6 +293,9 @@ export function BudgetPoolsPage({
       id: editingPoolId || `pool-${uid()}`,
       year: Number(draft.year) || currentFiscalYear(),
       code: draft.code.trim(),
+      planName: draft.planName.trim() || undefined,
+      workName: draft.workName.trim() || undefined,
+      budgetType: draft.budgetType.trim() || undefined,
       expenseCategory: draft.expenseCategory.trim() || undefined,
       expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
       name: draft.name.trim(),
@@ -317,7 +379,7 @@ export function BudgetPoolsPage({
             <span className="text-xs text-[#597494]">บาท</span>
           </div>
           <p className="mt-2 text-[11px] text-[#557191]">
-            ตั้งเป็นงบก้อนใหญ่ ไม่นับซ้ำกับการซื้อแต่ละครั้ง
+            ฐานงบประมาณกลางประจำปีของโครงการจัดซื้อจัดจ้างทั้งหมด
           </p>
         </article>
 
@@ -393,7 +455,7 @@ export function BudgetPoolsPage({
               </span>
             </div>
             <p className="mt-1 text-[11px] text-[#4c6a8d]">
-              เหมาะสำหรับวัสดุสำนักงาน วัสดุก่อสร้าง หรือหมวดที่ตั้งงบก้อนใหญ่แล้วทยอยซื้อเป็นครั้งคราว · เมื่อบันทึกวงเงินตกลงซื้อแล้ว ระบบจะคืนส่วนต่างกลับเข้ายอดคงเหลืออัตโนมัติ
+              แยกวงเงินตามลำดับ แผนงาน › งาน › งบ › หมวด › ประเภทค่าใช้จ่าย · กันยอดจากราคากลางและคืนส่วนต่างอัตโนมัติเมื่อบันทึกวงเงินตกลง
             </p>
           </div>
 
@@ -463,9 +525,9 @@ export function BudgetPoolsPage({
               <h3 className="mt-3 text-sm font-semibold text-[#143763]">
                 ยังไม่มีรายการ BUDGET DATA
               </h3>
-              <p className="mt-1 max-w-[520px] text-xs leading-relaxed text-[#4f6d90]">
-                สร้างหมวดวงเงินก้อนใหญ่ เช่น ค่าวัสดุสำนักงาน หรือ ค่าวัสดุก่อสร้าง
-                เพื่อให้สามารถผูกใบจัดซื้อแต่ละครั้งเข้ามาตัดยอดจากวงเงินนี้ได้โดยไม่ทำให้ยอดงบประมาณในหน้าภาพรวมนับซ้ำ
+              <p className="mt-1 max-w-[560px] text-xs leading-relaxed text-[#4f6d90]">
+                สร้างหมวดวงเงินงบประมาณประจำปี (แผนงาน / งาน / งบ / หมวด / ประเภทค่าใช้จ่าย)
+                ก่อนบันทึกโครงการจัดซื้อจัดจ้าง เพื่อให้โครงการทุกงานผูกตัดยอดจากหมวดงบประมาณของปีนั้นอย่างเป็นระบบ
               </p>
               {isAdmin && (
                 <button
@@ -517,12 +579,13 @@ export function BudgetPoolsPage({
                                 {pool.code}
                               </span>
                             )}
-                            {(pool.expenseCategory || pool.expenseSubCategory) && (
+                            {(pool.planName ||
+                              pool.workName ||
+                              pool.budgetType ||
+                              pool.expenseCategory ||
+                              pool.expenseSubCategory) && (
                               <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10.5px] font-semibold text-[#1d4ed8]">
-                                {formatExpenseClassification(
-                                  pool.expenseCategory,
-                                  pool.expenseSubCategory,
-                                )}
+                                {formatBudgetHierarchyPath(pool)}
                               </span>
                             )}
                             {usage.isOverBudget && (
@@ -563,7 +626,10 @@ export function BudgetPoolsPage({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setDeleteTarget(usage)}
+                              onClick={() => {
+                                setConfirmUnlinkOnDelete(false);
+                                setDeleteTarget(usage);
+                              }}
                               aria-label={`ลบหมวดวงเงิน ${pool.name}`}
                               className="rounded-md border border-[#edb8b8] bg-white p-1.5 text-[#a82c2c] transition hover:bg-[#ffebeb]"
                             >
@@ -818,14 +884,14 @@ export function BudgetPoolsPage({
           aria-labelledby="budget-pool-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/75 p-3 backdrop-blur-[2px] sm:p-5"
         >
-          <div className="flex max-h-[90dvh] w-full max-w-[600px] flex-col overflow-hidden rounded-2xl border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
+          <div className="flex max-h-[90dvh] w-full max-w-[680px] flex-col overflow-hidden rounded-2xl border border-[#2b6cb5] bg-[#f8fbff] shadow-2xl">
             <div className="flex shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-[#092954] via-[#0f448a] to-[#1666ba] px-5 py-4 text-white">
               <div>
                 <h3 id="budget-pool-modal-title" className="text-base font-bold">
                   {editingPoolId ? 'แก้ไข BUDGET DATA' : 'เพิ่ม BUDGET DATA'}
                 </h3>
                 <p className="mt-0.5 text-[11px] text-[#b8dcff]">
-                  ตั้งวงเงินก้อนใหญ่ประจำปีเพื่อรองรับการทยอยซื้อวัสดุหรือรายการย่อยเป็นครั้งคราว
+                  จำแนกตามลำดับขั้น 5 ระดับ: แผนงาน › งาน › งบ › หมวด › ประเภทค่าใช้จ่าย
                 </p>
               </div>
               <button
@@ -844,22 +910,70 @@ export function BudgetPoolsPage({
             >
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               <div className="rounded-xl border border-[#c6daf0] bg-[#f4f8fe] p-3.5">
-                <div className="mb-2.5 flex items-center justify-between gap-2">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <span className="text-[11.5px] font-bold text-[#143d70]">
-                    จำแนกหมวดค่าใช้จ่ายและประเภทย่อย
+                    ลำดับขั้นงบประมาณ (5 ระดับ)
                   </span>
                   <button
                     type="button"
                     onClick={() => setCategoryModalOpen(true)}
                     className="text-[11px] font-semibold text-[#1355b0] hover:underline"
                   >
-                    ตั้งค่าหมวด / เพิ่มประเภทย่อย
+                    ตั้งค่าหมวด / เพิ่มประเภทค่าใช้จ่าย
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                    หมวดค่าใช้จ่ายหลัก
+                    1. แผนงาน
+                    <div className="mt-1.5">
+                      <AutoSuggestInput
+                        maxLength={200}
+                        placeholder="เช่น แผนงานอุตสาหกรรมและการโยธา"
+                        value={draft.planName}
+                        suggestions={planSuggestions}
+                        onChangeValue={(nextVal) =>
+                          setDraft((p) => ({ ...p, planName: nextVal }))
+                        }
+                        className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                    2. งาน
+                    <div className="mt-1.5">
+                      <AutoSuggestInput
+                        maxLength={200}
+                        placeholder="เช่น งานบริหารงานทั่วไปเกี่ยวกับอุตสาหกรรมและการโยธา"
+                        value={draft.workName}
+                        suggestions={workSuggestions}
+                        onChangeValue={(nextVal) =>
+                          setDraft((p) => ({ ...p, workName: nextVal }))
+                        }
+                        className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-[11.5px] font-semibold text-[#1d4069] sm:col-span-2">
+                    3. งบ
+                    <div className="mt-1.5">
+                      <AutoSuggestInput
+                        maxLength={120}
+                        placeholder="เช่น งบดำเนินงาน, งบลงทุน, งบบุคลากร"
+                        value={draft.budgetType}
+                        suggestions={budgetTypeSuggestions}
+                        onChangeValue={(nextVal) =>
+                          setDraft((p) => ({ ...p, budgetType: nextVal }))
+                        }
+                        className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-[11.5px] font-semibold text-[#1d4069]">
+                    4. หมวด
                     <div className="mt-1.5">
                       <AutoSuggestInput
                         maxLength={120}
@@ -895,11 +1009,11 @@ export function BudgetPoolsPage({
                   </label>
 
                   <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                    ประเภทย่อย
+                    5. ประเภทค่าใช้จ่าย
                     <div className="mt-1.5">
                       <AutoSuggestInput
                         maxLength={150}
-                        placeholder="เลือกหรือพิมพ์ประเภทย่อย เช่น วัสดุไฟฟ้าและวิทยุ"
+                        placeholder="เช่น วัสดุก่อสร้าง, วัสดุสำนักงาน"
                         value={draft.expenseSubCategory}
                         suggestions={draftSubCategorySuggestions}
                         onChangeValue={(nextSub) =>
@@ -1090,11 +1204,11 @@ export function BudgetPoolsPage({
                 </label>
 
                 <label className="col-span-full block text-[11.5px] font-semibold text-[#1d4069]">
-                  หมายเหตุ / แผนงาน
+                  หมายเหตุเพิ่มเติม
                   <textarea
                     rows={2}
                     maxLength={500}
-                    placeholder="รายละเอียดเพิ่มเติม เช่น แผนงานเคหะและชุมชน หมวดค่าวัสดุ"
+                    placeholder="รายละเอียดเพิ่มเติม เช่น โครงการตามข้อบัญญัติ หรือหมายเหตุประกอบหมวดงบประมาณ"
                     value={draft.notes}
                     onChange={(e) =>
                       setDraft((p) => ({ ...p, notes: e.target.value }))
@@ -1141,36 +1255,66 @@ export function BudgetPoolsPage({
           aria-labelledby="delete-pool-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#061830]/70 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-[420px] rounded-xl border border-[#9fc0e6] bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-[460px] rounded-xl border border-[#9fc0e6] bg-white p-5 shadow-2xl">
             <h3 id="delete-pool-title" className="text-sm font-bold text-[#0f2a4a]">
               ยืนยันการลบ BUDGET DATA
             </h3>
             <p className="mt-2 text-xs leading-relaxed text-[#365375]">
               ต้องการลบหมวดวงเงิน <b>{deleteTarget.pool.name}</b> (ปีงบฯ{' '}
               {deleteTarget.pool.year}) ออกจากระบบหรือไม่?
-              {deleteTarget.linkedProjects.length > 0 && (
-                <>
-                  <br />
-                  <span className="mt-1 inline-block text-[#a66d0d]">
-                    หมายเหตุ: รายการจัดซื้อที่เชื่อมอยู่{' '}
-                    {deleteTarget.linkedProjects.length} รายการ จะไม่ถูกลบ
-                    แต่จะถูกเปลี่ยนกลับเป็นรายการเดี่ยว
-                  </span>
-                </>
-              )}
             </p>
+            {deleteTarget.linkedProjects.length > 0 && (
+              <div className="mt-3 space-y-2.5 rounded-lg border border-[#edb8b8] bg-[#fff5f5] p-3 text-xs text-[#8f2020]">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#b82828]" />
+                  <div>
+                    <div className="font-semibold">
+                      คำเตือน: มี {deleteTarget.linkedProjects.length} โครงการผูกอยู่กับหมวดนี้
+                    </div>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-[#703030]">
+                      รายการโครงการจะไม่ถูกลบ แต่จะถูกปลดความเชื่อมโยงออกเป็น{' '}
+                      <b>ยังไม่ผูก BUDGET DATA</b> (จะต้องเข้าไปเลือกหมวด BUDGET DATA ใหม่ในหน้าแก้ไขโครงการ):{' '}
+                      <span className="font-mono-num font-semibold">
+                        {deleteTarget.linkedProjects
+                          .slice(0, 6)
+                          .map((p) => p.code)
+                          .join(', ')}
+                        {deleteTarget.linkedProjects.length > 6
+                          ? ` และอีก ${deleteTarget.linkedProjects.length - 6} รายการ`
+                          : ''}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 border-t border-[#f3d0d0] pt-2 text-[11.5px] font-semibold text-[#6e1c1c]">
+                  <input
+                    type="checkbox"
+                    checked={confirmUnlinkOnDelete}
+                    onChange={(e) => setConfirmUnlinkOnDelete(e.target.checked)}
+                    className="h-3.5 w-3.5 shrink-0 accent-[#b82828]"
+                  />
+                  รับทราบและยืนยันปลดความเชื่อมโยงทั้ง {deleteTarget.linkedProjects.length} โครงการ
+                </label>
+              </div>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setConfirmUnlinkOnDelete(false);
+                }}
                 className="rounded-lg border border-[#afc8e4] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#274469] hover:bg-[#edf4fc]"
               >
                 ยกเลิก
               </button>
               <button
                 type="button"
+                disabled={
+                  deleteTarget.linkedProjects.length > 0 && !confirmUnlinkOnDelete
+                }
                 onClick={handleConfirmDelete}
-                className="rounded-lg bg-[#b82828] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#961d1d]"
+                className="rounded-lg bg-[#b82828] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#961d1d] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 ยืนยันลบหมวดวงเงิน
               </button>

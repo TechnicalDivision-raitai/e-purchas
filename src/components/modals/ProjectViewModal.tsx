@@ -23,7 +23,7 @@ import {
 } from 'react';
 import { PROJECT_TABS } from '../../data/constants';
 import { calculateBudgetPoolUsage } from '../../domain/budgetPools';
-import { resolveProjectExpenseClassification } from '../../domain/expenseCategories';
+import { resolveProjectBudgetHierarchy } from '../../domain/expenseCategories';
 import {
   canEditProject,
   createAcceptanceDraft,
@@ -97,7 +97,7 @@ export function ProjectViewModal({
   const linkedPoolUsage = linkedPool
     ? calculateBudgetPoolUsage(linkedPool, state.rows)
     : undefined;
-  const expenseClassification = resolveProjectExpenseClassification(
+  const budgetHierarchy = resolveProjectBudgetHierarchy(
     project,
     new Map((state.budgetPools || []).map((p) => [p.id, p])),
   );
@@ -460,15 +460,18 @@ export function ProjectViewModal({
                       ['เลขทะเบียน', project.code],
                       ['ปีงบประมาณ', `พ.ศ. ${project.year}`],
                       ['ประเภทงาน', project.type],
-                      ['หมวดค่าใช้จ่าย', expenseClassification.category || '—'],
-                      ['ประเภทย่อย', expenseClassification.subCategory || '—'],
+                      ['แผนงาน', budgetHierarchy.planName || '—'],
+                      ['งาน', budgetHierarchy.workName || '—'],
+                      ['งบ', budgetHierarchy.budgetType || '—'],
+                      ['หมวดค่าใช้จ่าย', budgetHierarchy.expenseCategory || '—'],
+                      ['ประเภทค่าใช้จ่าย', budgetHierarchy.expenseSubCategory || '—'],
                       ['วิธีจัดซื้อจัดจ้าง', project.method],
                       ['แหล่งงบประมาณ', project.fund],
                       ...(linkedPool && linkedPoolUsage
                         ? ([
                             [
-                              'รูปแบบการใช้งบประมาณ',
-                              `BUDGET DATA: ${linkedPool.name} (ปีงบฯ ${linkedPool.year}) · คงเหลือ ฿ ${formatMoney(linkedPoolUsage.remainingAmount)} จาก ฿ ${formatMoney(linkedPool.allocatedBudget)}`,
+                              'หมวดงบประมาณ (BUDGET DATA)',
+                              `${linkedPool.name} (ปีงบฯ ${linkedPool.year}) · คงเหลือ ฿ ${formatMoney(linkedPoolUsage.remainingAmount)} จาก ฿ ${formatMoney(linkedPool.allocatedBudget)}`,
                             ],
                             [
                               'วงเงินการขอซื้อ (อ้างอิงราคากลาง)',

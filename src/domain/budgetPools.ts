@@ -137,6 +137,9 @@ export function calculateBudgetPoolUsageList(
         const hay = [
           p.code,
           p.name,
+          p.planName,
+          p.workName,
+          p.budgetType,
           p.expenseCategory,
           p.expenseSubCategory,
           p.fund,
@@ -203,6 +206,9 @@ export function calculateCombinedFinancialOverview(
     const hay = [
       p.code,
       p.name,
+      p.planName,
+      p.workName,
+      p.budgetType,
       p.expenseCategory,
       p.expenseSubCategory,
       p.fund,
@@ -294,14 +300,22 @@ export function validateBudgetPool(
     }
   }
 
+  const norm = (v: string | undefined) => String(v || '').trim().toLowerCase();
+  const draftPlan = norm(draft.planName);
+  const draftWork = norm(draft.workName);
+  const draftBudgetType = norm(draft.budgetType);
+
   const dupName = existingPools.find(
     (p) =>
       p.id !== editingId &&
       Number(p.year) === year &&
-      p.name.trim().toLowerCase() === name.toLowerCase(),
+      p.name.trim().toLowerCase() === name.toLowerCase() &&
+      norm(p.planName) === draftPlan &&
+      norm(p.workName) === draftWork &&
+      norm(p.budgetType) === draftBudgetType,
   );
   if (dupName) {
-    errors.push(`ชื่อหมวดวงเงิน "${name}" มีอยู่แล้วในปีงบฯ ${year}`);
+    errors.push(`ชื่อหมวดวงเงิน "${name}" มีอยู่แล้วในแผนงาน/งาน/งบเดียวกันของปีงบฯ ${year}`);
   }
 
   return errors;

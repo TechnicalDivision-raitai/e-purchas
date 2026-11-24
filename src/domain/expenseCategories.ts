@@ -167,11 +167,70 @@ export function suggestPoolNameFromSubCategory(
   return `ค่า${sub}`;
 }
 
+export function resolveProjectBudgetHierarchy(
+  project: Pick<
+    ProjectRecord,
+    | 'planName'
+    | 'workName'
+    | 'budgetType'
+    | 'expenseCategory'
+    | 'expenseSubCategory'
+    | 'budgetPoolId'
+  >,
+  poolById: Map<string, BudgetPool>,
+): {
+  planName: string;
+  workName: string;
+  budgetType: string;
+  expenseCategory: string;
+  expenseSubCategory: string;
+  pool?: BudgetPool;
+} {
+  const linkedPool = project.budgetPoolId
+    ? poolById.get(project.budgetPoolId)
+    : undefined;
+
+  return {
+    planName: normalizeLabel(project.planName) || normalizeLabel(linkedPool?.planName),
+    workName: normalizeLabel(project.workName) || normalizeLabel(linkedPool?.workName),
+    budgetType:
+      normalizeLabel(project.budgetType) || normalizeLabel(linkedPool?.budgetType),
+    expenseCategory:
+      normalizeLabel(project.expenseCategory) ||
+      normalizeLabel(linkedPool?.expenseCategory),
+    expenseSubCategory:
+      normalizeLabel(project.expenseSubCategory) ||
+      normalizeLabel(linkedPool?.expenseSubCategory),
+    pool: linkedPool,
+  };
+}
+
+export function formatBudgetHierarchyPath(parts: {
+  planName?: string;
+  workName?: string;
+  budgetType?: string;
+  expenseCategory?: string;
+  expenseSubCategory?: string;
+}): string {
+  return [
+    normalizeLabel(parts.planName),
+    normalizeLabel(parts.workName),
+    normalizeLabel(parts.budgetType),
+    normalizeLabel(parts.expenseCategory),
+    normalizeLabel(parts.expenseSubCategory),
+  ]
+    .filter(Boolean)
+    .join(' › ');
+}
+
 export interface ExpenseSubCategoryPoolRef {
   id: string;
   year: number;
   code: string;
   name: string;
+  planName?: string;
+  workName?: string;
+  budgetType?: string;
 }
 
 export interface ExpenseSubCategorySummary {
@@ -328,6 +387,9 @@ export function buildExpenseHierarchySummary(
       year: Number(pool.year) || 0,
       code: String(pool.code || '').trim(),
       name: String(pool.name || '').trim(),
+      planName: normalizeLabel(pool.planName) || undefined,
+      workName: normalizeLabel(pool.workName) || undefined,
+      budgetType: normalizeLabel(pool.budgetType) || undefined,
     });
   }
 

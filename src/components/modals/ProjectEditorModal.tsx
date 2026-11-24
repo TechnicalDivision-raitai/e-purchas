@@ -26,6 +26,10 @@ import {
 } from 'react';
 import {
   ACCEPTANCE_RESULTS,
+  BUDGET_GROUP_PRESETS,
+  BUDGET_GROUP_TO_CATEGORIES,
+  BUDGET_PLAN_PRESETS,
+  BUDGET_WORK_PRESETS,
   COMMITTEE_ROLES,
   DEFAULT_DEPARTMENT,
   MAX_PROJECT_ATTACHMENT_BYTES,
@@ -39,8 +43,10 @@ import {
 } from '../../domain/budgetPools';
 import {
   findParentCategoryForSubCategory,
+  formatBudgetHierarchyPath,
   getEffectiveExpenseCatalog,
   getSubCategoriesForCategory,
+  suggestPoolNameFromSubCategory,
 } from '../../domain/expenseCategories';
 import {
   buildPersonPositionMap,
@@ -121,13 +127,15 @@ interface DraftState {
   year: number;
   code: string;
   type: ProjectType;
+  planName: string;
+  workName: string;
+  budgetType: string;
   expenseCategory: string;
   expenseSubCategory: string;
   title: string;
   method: string;
   fund: string;
   budget: string;
-  budgetMode: 'standalone' | 'pool';
   budgetPoolId: string;
   reference: string;
   agreed: string;
@@ -170,6 +178,9 @@ function createDraftFromRecord(
     year: old ? old.year : initialPool ? initialPool.year : 2570,
     code: old ? old.code : generateNextProjectCode(existingRows, initialType),
     type: initialType,
+    planName: old?.planName || linkedPool?.planName || '',
+    workName: old?.workName || linkedPool?.workName || '',
+    budgetType: old?.budgetType || linkedPool?.budgetType || '',
     expenseCategory:
       old?.expenseCategory || linkedPool?.expenseCategory || '',
     expenseSubCategory:
@@ -178,7 +189,6 @@ function createDraftFromRecord(
     method: old ? old.method : 'เฉพาะเจาะจง',
     fund: old ? old.fund : initialPool?.fund || '',
     budget: old ? String(old.budget ?? 0) : '0',
-    budgetMode: resolvedPoolId ? 'pool' : 'standalone',
     budgetPoolId: resolvedPoolId,
     reference: old ? String(old.reference ?? 0) : '0',
     agreed: old ? String(old.agreed ?? 0) : '0',
@@ -250,6 +260,11 @@ export function ProjectEditorModal({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [showCancelPanel, setShowCancelPanel] = useState<boolean>(false);
   const [quickPoolOpen, setQuickPoolOpen] = useState<boolean>(false);
+  const [quickPoolPlan, setQuickPoolPlan] = useState<string>('');
+  const [quickPoolWork, setQuickPoolWork] = useState<string>('');
+  const [quickPoolBudgetType, setQuickPoolBudgetType] = useState<string>('งบดำเนินงาน');
+  const [quickPoolCategory, setQuickPoolCategory] = useState<string>('');
+  const [quickPoolSubCategory, setQuickPoolSubCategory] = useState<string>('');
   const [quickPoolName, setQuickPoolName] = useState<string>('');
   const [quickPoolAmount, setQuickPoolAmount] = useState<string>('');
   const [quickPoolError, setQuickPoolError] = useState<string>('');
@@ -279,6 +294,11 @@ export function ProjectEditorModal({
       Boolean(existing?.projectDetails?.cancelledRounds?.length),
     );
     setQuickPoolOpen(false);
+    setQuickPoolPlan('');
+    setQuickPoolWork('');
+    setQuickPoolBudgetType('งบดำเนินงาน');
+    setQuickPoolCategory('');
+    setQuickPoolSubCategory('');
     setQuickPoolName('');
     setQuickPoolAmount('');
     setQuickPoolError('');
@@ -297,22 +317,85 @@ export function ProjectEditorModal({
     [state.expenseCategories, state.rows, budgetPools],
   );
 
-  const mainCategorySuggestions = useMemo(
-    () => expenseCatalog.map((g) => g.name),
-    [expenseCatalog],
+  const quickPlanSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_PLAN_PRESETS,
+        ...budgetPools.map((p) => p.planName),
+        ...state.rows.map((r) => r.planName),
+      ]),
+    [budgetPools, state.rows],
   );
 
-  const subCategorySuggestions = useMemo(
-    () => getSubCategoriesForCategory(expenseCatalog, draft.expenseCategory),
-    [expenseCatalog, draft.expenseCategory],
+  const quickWorkSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_WORK_PRESETS,
+        ...budgetPools
+          .filter(
+            (p) =>
+              !quickPoolPlan.trim() ||
+              !p.planName ||
+              p.planName.trim().toLowerCase() ===
+                quickPoolPlan.trim().toLowerCase(),
+          )
+          .map((p) => p.workName),
+        ...budgetPools.map((p) => p.workName),
+        ...state.rows.map((r) => r.workName),
+      ]),
+    [budgetPools, state.rows, quickPoolPlan],
+  );
+
+  const quickBudgetTypeSuggestions = useMemo(
+    () =>
+      collectNormalizedSuggestions([
+        ...BUDGET_GROUP_PRESETS,
+        ...budgetPools.map((p) => p.budgetType),
+        ...state.rows.map((r) => r.budgetType),
+      ]),
+    [budgetPools, state.rows],
+  );
+
+  const mainCategorySuggestions = useMemo(() => {
+    const preferred =
+      BUDGET_GROUP_TO_CATEGORIES[quickPoolBudgetType.trim()] || [];
+    return collectNormalizedSuggestions([
+      ...preferred,
+      ...expenseCatalog.map((g) => g.name),
+    ]);
+  }, [expenseCatalog, quickPoolBudgetType]);
+
+  const quickPoolSubSuggestions = useMemo(
+    () => getSubCategoriesForCategory(expenseCatalog, quickPoolCategory),
+    [expenseCatalog, quickPoolCategory],
+  );
+
+  const yearBudgetPools = useMemo(
+    () =>
+      budgetPools
+        .filter((bp) => Number(bp.year) === Number(draft.year))
+        .sort((a, b) => {
+          const planCmp = String(a.planName || '').localeCompare(
+            String(b.planName || ''),
+            'th',
+          );
+          if (planCmp !== 0) return planCmp;
+          const catCmp = String(a.expenseCategory || '').localeCompare(
+            String(b.expenseCategory || ''),
+            'th',
+          );
+          if (catCmp !== 0) return catCmp;
+          return a.name.localeCompare(b.name, 'th');
+        }),
+    [budgetPools, draft.year],
   );
 
   const selectedBudgetPool = useMemo(
     () =>
-      draft.budgetMode === 'pool' && draft.budgetPoolId
+      draft.budgetPoolId
         ? budgetPools.find((p) => p.id === draft.budgetPoolId)
         : undefined,
-    [draft.budgetMode, draft.budgetPoolId, budgetPools],
+    [draft.budgetPoolId, budgetPools],
   );
 
   const selectedPoolOtherUsage = useMemo(
@@ -337,13 +420,23 @@ export function ProjectEditorModal({
 
   const handleQuickCreatePool = () => {
     setQuickPoolError('');
+    const cleanPlan = quickPoolPlan.trim();
+    const cleanWork = quickPoolWork.trim();
+    const cleanBudgetType = quickPoolBudgetType.trim();
+    const cleanCat = quickPoolCategory.trim();
+    const cleanSub = quickPoolSubCategory.trim();
     const newPool: BudgetPool = {
       id: `pool-${uid()}`,
       year: Number(draft.year) || 2570,
       code: '',
-      expenseCategory: draft.expenseCategory.trim() || undefined,
-      expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
-      name: quickPoolName.trim(),
+      planName: cleanPlan || undefined,
+      workName: cleanWork || undefined,
+      budgetType: cleanBudgetType || undefined,
+      expenseCategory: cleanCat || undefined,
+      expenseSubCategory: cleanSub || undefined,
+      name:
+        quickPoolName.trim() ||
+        suggestPoolNameFromSubCategory(cleanCat, cleanSub),
       fund: draft.fund.trim() || 'งบประมาณรายจ่าย',
       department: existing?.department || DEFAULT_DEPARTMENT,
       allocatedBudget: Number(quickPoolAmount) || 0,
@@ -358,11 +451,20 @@ export function ProjectEditorModal({
     if (ok) {
       setDraft((p) => ({
         ...p,
-        budgetMode: 'pool',
         budgetPoolId: newPool.id,
-        fund: p.fund.trim() ? p.fund : newPool.fund,
+        fund: newPool.fund || p.fund,
+        planName: newPool.planName || '',
+        workName: newPool.workName || '',
+        budgetType: newPool.budgetType || '',
+        expenseCategory: newPool.expenseCategory || '',
+        expenseSubCategory: newPool.expenseSubCategory || '',
       }));
       setQuickPoolOpen(false);
+      setQuickPoolPlan('');
+      setQuickPoolWork('');
+      setQuickPoolBudgetType('งบดำเนินงาน');
+      setQuickPoolCategory('');
+      setQuickPoolSubCategory('');
       setQuickPoolName('');
       setQuickPoolAmount('');
       showToast(`สร้างหมวดวงเงิน "${newPool.name}" และผูกให้รายการนี้แล้ว`);
@@ -663,27 +765,57 @@ export function ProjectEditorModal({
       const assignee = existing ? existing.assignee : user.id;
       const department = existing?.department || DEFAULT_DEPARTMENT;
 
-      if (draft.budgetMode === 'pool' && !draft.budgetPoolId) {
-        setFormError('กรุณาเลือกหมวด BUDGET DATA หรือเปลี่ยนเป็นรูปแบบโครงการ/งบเฉพาะรายการ');
+      if (!draft.budgetPoolId) {
+        setFormError(
+          `กรุณาเลือกหมวดงบประมาณ (BUDGET DATA) ประจำปีงบฯ ${draft.year} ก่อนบันทึกโครงการ`,
+        );
         setActiveTab('general');
         return;
       }
+
+      const chosenPool = budgetPools.find((bp) => bp.id === draft.budgetPoolId);
+      if (!chosenPool) {
+        setFormError(
+          'ไม่พบหมวด BUDGET DATA ที่เลือก กรุณาเลือกหมวดงบประมาณใหม่อีกครั้ง',
+        );
+        setActiveTab('general');
+        return;
+      }
+      if (Number(chosenPool.year) !== Number(draft.year)) {
+        setFormError(
+          `หมวด BUDGET DATA "${chosenPool.name}" อยู่ในปีงบฯ ${chosenPool.year} กรุณาเลือกหมวดที่ตรงกับปีงบฯ ${draft.year}`,
+        );
+        setActiveTab('general');
+        return;
+      }
+
+      const resolvedPlanName =
+        (chosenPool.planName || draft.planName).trim() || undefined;
+      const resolvedWorkName =
+        (chosenPool.workName || draft.workName).trim() || undefined;
+      const resolvedBudgetType =
+        (chosenPool.budgetType || draft.budgetType).trim() || undefined;
+      const resolvedExpenseCategory =
+        (chosenPool.expenseCategory || draft.expenseCategory).trim() || undefined;
+      const resolvedExpenseSubCategory =
+        (chosenPool.expenseSubCategory || draft.expenseSubCategory).trim() || undefined;
+      const resolvedFund = draft.fund.trim() || chosenPool.fund || '';
 
       const baseRecord: ProjectRecord = {
         id: existing ? existing.id : '',
         year: Number(draft.year) || 2570,
         code: draft.code.trim(),
         type: draft.type,
-        expenseCategory: draft.expenseCategory.trim() || undefined,
-        expenseSubCategory: draft.expenseSubCategory.trim() || undefined,
+        planName: resolvedPlanName,
+        workName: resolvedWorkName,
+        budgetType: resolvedBudgetType,
+        expenseCategory: resolvedExpenseCategory,
+        expenseSubCategory: resolvedExpenseSubCategory,
         title: draft.title.trim(),
         method: draft.method.trim(),
-        fund: draft.fund.trim(),
-        budget: draft.budgetMode === 'pool' ? 0 : Number(draft.budget) || 0,
-        budgetPoolId:
-          draft.budgetMode === 'pool' && draft.budgetPoolId
-            ? draft.budgetPoolId
-            : undefined,
+        fund: resolvedFund,
+        budget: 0,
+        budgetPoolId: chosenPool.id,
         reference: Number(draft.reference) || 0,
         agreed: Number(draft.agreed) || 0,
         responsibleName: draft.responsibleName.trim(),
@@ -750,6 +882,9 @@ export function ProjectEditorModal({
               'year',
               'code',
               'type',
+              'planName',
+              'workName',
+              'budgetType',
               'expenseCategory',
               'expenseSubCategory',
               'title',
@@ -1389,9 +1524,31 @@ export function ProjectEditorModal({
                       ปีงบประมาณ พ.ศ. *
                       <select
                         value={draft.year}
-                        onChange={(e) =>
-                          setDraft((p) => ({ ...p, year: Number(e.target.value) }))
-                        }
+                        onChange={(e) => {
+                          const nextYear = Number(e.target.value);
+                          setDraft((p) => {
+                            const currentPool = budgetPools.find(
+                              (bp) => bp.id === p.budgetPoolId,
+                            );
+                            const keepPool =
+                              currentPool &&
+                              Number(currentPool.year) === nextYear;
+                            return {
+                              ...p,
+                              year: nextYear,
+                              budgetPoolId: keepPool ? p.budgetPoolId : '',
+                              planName: keepPool ? p.planName : '',
+                              workName: keepPool ? p.workName : '',
+                              budgetType: keepPool ? p.budgetType : '',
+                              expenseCategory: keepPool
+                                ? p.expenseCategory
+                                : '',
+                              expenseSubCategory: keepPool
+                                ? p.expenseSubCategory
+                                : '',
+                            };
+                          });
+                        }}
                         className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 text-xs font-normal text-[#132d4c]"
                       >
                         {getFiscalYearOptions(draft.year).map((y) => (
@@ -1482,383 +1639,326 @@ export function ProjectEditorModal({
                       />
                     </label>
 
-                    <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#f4f8fe] p-3.5">
+                    <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#eef5fd] p-3.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#153e6e]">
-                          <FolderTree className="h-3.5 w-3.5 text-[#1455b3]" />
-                          หมวดค่าใช้จ่ายและประเภทย่อย
+                          <Wallet className="h-3.5 w-3.5 text-[#1455b3]" />
+                          หมวดงบประมาณประจำปี (BUDGET DATA) *
                         </div>
                         <button
                           type="button"
                           onClick={() => setCategoryManagerOpen(true)}
-                          className="text-[11px] font-semibold text-[#1355b0] hover:underline"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1355b0] hover:underline"
                         >
-                          จัดการหมวด / เพิ่มประเภทย่อย
+                          <FolderTree className="h-3 w-3" />
+                          จัดการหมวดค่าใช้จ่าย
                         </button>
                       </div>
 
-                      <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                          หมวดค่าใช้จ่าย
-                          <div className="mt-1.5">
-                            <AutoSuggestInput
-                              maxLength={120}
-                              placeholder="เช่น ค่าวัสดุ, ค่าครุภัณฑ์, ค่าใช้สอย"
-                              value={draft.expenseCategory}
-                              suggestions={mainCategorySuggestions}
-                              onChangeValue={(nextCat) =>
-                                setDraft((p) => {
+                      <div className="mt-2.5 space-y-2.5">
+                        <div className="flex flex-wrap items-end gap-2">
+                          <label className="min-w-[240px] flex-1 text-[11px] font-semibold text-[#1d4069]">
+                            เลือกหมวด BUDGET DATA (ปีงบฯ {draft.year}) *
+                            <select
+                              required
+                              value={draft.budgetPoolId}
+                              onChange={(e) => {
+                                const nextId = e.target.value;
+                                const chosen = yearBudgetPools.find(
+                                  (bp) => bp.id === nextId,
+                                );
+                                setDraft((p) => ({
+                                  ...p,
+                                  budgetPoolId: nextId,
+                                  fund: chosen?.fund || p.fund,
+                                  planName: chosen?.planName || '',
+                                  workName: chosen?.workName || '',
+                                  budgetType: chosen?.budgetType || '',
+                                  expenseCategory: chosen?.expenseCategory || '',
+                                  expenseSubCategory:
+                                    chosen?.expenseSubCategory || '',
+                                }));
+                              }}
+                              className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
+                            >
+                              <option value="">
+                                {yearBudgetPools.length > 0
+                                  ? `— เลือกหมวด BUDGET DATA ปีงบฯ ${draft.year} —`
+                                  : `— ยังไม่มีหมวด BUDGET DATA ปีงบฯ ${draft.year} —`}
+                              </option>
+                              {yearBudgetPools.map((bp) => {
+                                const usage = calculateBudgetPoolUsage(
+                                  bp,
+                                  state.rows,
+                                  existing?.id,
+                                );
+                                const clsText = formatBudgetHierarchyPath(bp);
+                                return (
+                                  <option key={bp.id} value={bp.id}>
+                                    {bp.code ? `${bp.code} · ` : ''}
+                                    {bp.name}
+                                    {clsText ? ` [${clsText}]` : ''} (คงเหลือ ฿{' '}
+                                    {formatMoney(usage.remainingAmount)} / ฿{' '}
+                                    {formatMoney(bp.allocatedBudget)})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickPoolOpen((v) => !v);
+                              setQuickPoolError('');
+                            }}
+                            className="min-h-[38px] shrink-0 rounded-lg border border-[#9fc0e6] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#134a96] hover:bg-[#dfecfc]"
+                          >
+                            {quickPoolOpen
+                              ? 'ปิดฟอร์มสร้างหมวด'
+                              : '＋ เพิ่ม BUDGET DATA ใหม่'}
+                          </button>
+                        </div>
+
+                        {yearBudgetPools.length === 0 && !quickPoolOpen && (
+                          <div className="rounded-lg border border-[#ebd09c] bg-[#fff7e6] px-3 py-2 text-[11px] text-[#7c5310]">
+                            ยังไม่ได้เพิ่มหมวดงบประมาณใน <b>BUDGET DATA</b> สำหรับปีงบประมาณ พ.ศ.{' '}
+                            <b>{draft.year}</b> — กรุณาไปเพิ่มหมวดงบประจำปีที่เมนู BUDGET DATA
+                            หรือกดปุ่ม <b>“＋ เพิ่ม BUDGET DATA ใหม่”</b> ด้านบนก่อนบันทึกโครงการ
+                          </div>
+                        )}
+
+                        {quickPoolOpen && (
+                          <div className="space-y-2.5 rounded-lg border border-[#a9c5e6] bg-white p-3">
+                            <div className="text-[11px] font-semibold text-[#143d70]">
+                              เพิ่มหมวด BUDGET DATA ใหม่ (5 ระดับ · ปีงบฯ {draft.year})
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <AutoSuggestInput
+                                maxLength={200}
+                                placeholder="1. แผนงาน (เช่น แผนงานอุตสาหกรรมและการโยธา)"
+                                value={quickPoolPlan}
+                                suggestions={quickPlanSuggestions}
+                                onChangeValue={setQuickPoolPlan}
+                                className="min-h-[36px] w-full rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
+                              />
+                              <AutoSuggestInput
+                                maxLength={200}
+                                placeholder="2. งาน (เช่น งานบริหารงานทั่วไปเกี่ยวกับอุตสาหกรรมฯ)"
+                                value={quickPoolWork}
+                                suggestions={quickWorkSuggestions}
+                                onChangeValue={setQuickPoolWork}
+                                className="min-h-[36px] w-full rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
+                              />
+                              <AutoSuggestInput
+                                maxLength={120}
+                                placeholder="3. งบ (เช่น งบดำเนินงาน, งบลงทุน)"
+                                value={quickPoolBudgetType}
+                                suggestions={quickBudgetTypeSuggestions}
+                                onChangeValue={setQuickPoolBudgetType}
+                                className="min-h-[36px] w-full rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c] sm:col-span-2"
+                              />
+                              <AutoSuggestInput
+                                maxLength={120}
+                                placeholder="4. หมวด (เช่น ค่าวัสดุ, ค่าครุภัณฑ์)"
+                                value={quickPoolCategory}
+                                suggestions={mainCategorySuggestions}
+                                onChangeValue={(nextCat) => {
+                                  setQuickPoolCategory(nextCat);
                                   const validSubs = getSubCategoriesForCategory(
                                     expenseCatalog,
                                     nextCat,
                                   );
-                                  const keepSub =
-                                    !nextCat.trim() ||
-                                    validSubs.length === 0 ||
-                                    validSubs.some(
+                                  if (
+                                    quickPoolSubCategory.trim() &&
+                                    validSubs.length > 0 &&
+                                    !validSubs.some(
                                       (s) =>
                                         s.toLowerCase() ===
-                                        p.expenseSubCategory
-                                          .trim()
-                                          .toLowerCase(),
-                                    );
-                                  return {
-                                    ...p,
-                                    expenseCategory: nextCat,
-                                    expenseSubCategory: keepSub
-                                      ? p.expenseSubCategory
-                                      : '',
-                                  };
-                                })
-                              }
-                              className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
-                            />
-                          </div>
-                        </label>
-
-                        <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                          ประเภทย่อย
-                          <div className="mt-1.5">
-                            <AutoSuggestInput
-                              maxLength={150}
-                              placeholder={
-                                draft.expenseCategory
-                                  ? `เลือกประเภทย่อยในหมวด ${draft.expenseCategory}`
-                                  : 'เช่น วัสดุไฟฟ้าและวิทยุ, ครุภัณฑ์สำนักงาน'
-                              }
-                              value={draft.expenseSubCategory}
-                              suggestions={subCategorySuggestions}
-                              onChangeValue={(nextSub) =>
-                                setDraft((p) => {
+                                        quickPoolSubCategory.trim().toLowerCase(),
+                                    )
+                                  ) {
+                                    setQuickPoolSubCategory('');
+                                  }
+                                }}
+                                className="min-h-[36px] w-full rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
+                              />
+                              <AutoSuggestInput
+                                maxLength={150}
+                                placeholder="5. ประเภทค่าใช้จ่าย (เช่น วัสดุก่อสร้าง, วัสดุสำนักงาน)"
+                                value={quickPoolSubCategory}
+                                suggestions={quickPoolSubSuggestions}
+                                onChangeValue={(nextSub) => {
                                   const inferredParent =
-                                    !p.expenseCategory.trim() && nextSub.trim()
+                                    !quickPoolCategory.trim() && nextSub.trim()
                                       ? findParentCategoryForSubCategory(
                                           expenseCatalog,
                                           nextSub,
                                         )
                                       : null;
-                                  return {
-                                    ...p,
-                                    expenseCategory:
-                                      inferredParent || p.expenseCategory,
-                                    expenseSubCategory: nextSub,
-                                  };
-                                })
-                              }
-                              className="min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-2 text-xs font-normal text-[#132d4c]"
-                            />
-                          </div>
-                        </label>
-                      </div>
-
-                      {draft.expenseCategory.trim() &&
-                        subCategorySuggestions.length > 0 && (
-                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10.5px] font-medium text-[#4a688a]">
-                              เลือกด่วน:
-                            </span>
-                            {subCategorySuggestions.slice(0, 8).map((sub) => (
+                                  const nextCat = inferredParent || quickPoolCategory;
+                                  if (inferredParent) {
+                                    setQuickPoolCategory(inferredParent);
+                                  }
+                                  setQuickPoolSubCategory(nextSub);
+                                  if (!quickPoolName.trim() && nextSub.trim()) {
+                                    setQuickPoolName(
+                                      suggestPoolNameFromSubCategory(
+                                        nextCat,
+                                        nextSub,
+                                      ),
+                                    );
+                                  }
+                                }}
+                                className="min-h-[36px] w-full rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
+                              <input
+                                type="text"
+                                maxLength={250}
+                                placeholder="ชื่อหมวดวงเงิน เช่น ค่าวัสดุก่อสร้าง, ค่าวัสดุสำนักงาน"
+                                value={quickPoolName}
+                                onChange={(e) => setQuickPoolName(e.target.value)}
+                                className="min-h-[36px] rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
+                              />
+                              <input
+                                type="number"
+                                min={1}
+                                step="0.01"
+                                placeholder="วงเงินตั้งไว้ (บาท)"
+                                value={quickPoolAmount}
+                                onChange={(e) => setQuickPoolAmount(e.target.value)}
+                                className="min-h-[36px] rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
+                              />
                               <button
-                                key={sub}
                                 type="button"
-                                onClick={() =>
-                                  setDraft((p) => ({
-                                    ...p,
-                                    expenseSubCategory: sub,
-                                  }))
-                                }
-                                className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition ${
-                                  draft.expenseSubCategory === sub
-                                    ? 'border-[#1251a8] bg-[#dbeafd] font-semibold text-[#0d3e85]'
-                                    : 'border-[#c5daf0] bg-white text-[#2f5178] hover:bg-[#edf4fc]'
-                                }`}
+                                onClick={handleQuickCreatePool}
+                                className="min-h-[36px] whitespace-nowrap rounded-md bg-[#1251a8] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0d3e85]"
                               >
-                                {sub}
+                                บันทึกหมวดนี้
                               </button>
-                            ))}
+                            </div>
+                            {quickPoolError && (
+                              <p className="text-[11px] text-[#b52c2c]">
+                                {quickPoolError}
+                              </p>
+                            )}
                           </div>
                         )}
-                    </div>
 
-                    <div className="col-span-full rounded-xl border border-[#b4cde8] bg-[#eef5fd] p-3.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#153e6e]">
-                          <Wallet className="h-3.5 w-3.5 text-[#1455b3]" />
-                          รูปแบบการใช้งบประมาณ
-                        </div>
-                        <span className="text-[10.5px] text-[#4c6b8e]">
-                          ป้องกันการนับวงเงินงบประมาณซ้ำในหน้าภาพรวม
-                        </span>
-                      </div>
-
-                      <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDraft((p) => ({
-                              ...p,
-                              budgetMode: 'standalone',
-                              budgetPoolId: '',
-                            }))
-                          }
-                          className={`rounded-lg border px-3 py-2 text-left transition ${
-                            draft.budgetMode === 'standalone'
-                              ? 'border-[#1251a8] bg-white shadow-xs ring-1 ring-[#78b3f0]'
-                              : 'border-[#c5daf0] bg-[#f7fbff] hover:bg-white'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold text-[#0f3463]">
-                            โครงการ / งบเฉพาะรายการ
-                          </div>
-                          <div className="mt-0.5 text-[10.5px] text-[#527094]">
-                            ตั้งงบประมาณเฉพาะโครงการนี้ (เช่น งานก่อสร้าง / จัดซื้อครุภัณฑ์)
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDraft((p) => {
-                              const matchingYearPool = budgetPools.find(
-                                (bp) => Number(bp.year) === Number(p.year),
-                              );
-                              const fallbackPool =
-                                matchingYearPool || budgetPools[0];
-                              const nextPoolId =
-                                p.budgetPoolId || fallbackPool?.id || '';
-                              const targetPool =
-                                budgetPools.find((bp) => bp.id === nextPoolId) ||
-                                fallbackPool;
-                              return {
-                                ...p,
-                                budgetMode: 'pool',
-                                budgetPoolId: nextPoolId,
-                                fund:
-                                  p.fund.trim() || !targetPool?.fund
-                                    ? p.fund
-                                    : targetPool.fund,
-                                expenseCategory:
-                                  p.expenseCategory.trim() ||
-                                  !targetPool?.expenseCategory
-                                    ? p.expenseCategory
-                                    : targetPool.expenseCategory,
-                                expenseSubCategory:
-                                  p.expenseSubCategory.trim() ||
-                                  !targetPool?.expenseSubCategory
-                                    ? p.expenseSubCategory
-                                    : targetPool.expenseSubCategory,
-                              };
-                            })
-                          }
-                          className={`rounded-lg border px-3 py-2 text-left transition ${
-                            draft.budgetMode === 'pool'
-                              ? 'border-[#1251a8] bg-white shadow-xs ring-1 ring-[#78b3f0]'
-                              : 'border-[#c5daf0] bg-[#f7fbff] hover:bg-white'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold text-[#0f3463]">
-                            ตัดจาก BUDGET DATA (หมวดวัสดุ / ก้อนใหญ่)
-                          </div>
-                          <div className="mt-0.5 text-[10.5px] text-[#527094]">
-                            ตัดยอดจากวงเงินตั้งไว้ทั้งปี เช่น ค่าวัสดุสำนักงาน ค่าวัสดุก่อสร้าง
-                          </div>
-                        </button>
-                      </div>
-
-                      {draft.budgetMode === 'pool' && (
-                        <div className="mt-3 space-y-2.5 border-t border-[#c7dbf0] pt-3">
-                          <div className="flex flex-wrap items-end gap-2">
-                            <label className="min-w-[240px] flex-1 text-[11px] font-semibold text-[#1d4069]">
-                              เลือกหมวด BUDGET DATA *
-                              <select
-                                value={draft.budgetPoolId}
-                                onChange={(e) => {
-                                  const nextId = e.target.value;
-                                  const chosen = budgetPools.find(
-                                    (bp) => bp.id === nextId,
-                                  );
-                                  setDraft((p) => ({
-                                    ...p,
-                                    budgetPoolId: nextId,
-                                    fund:
-                                      chosen?.fund && !p.fund.trim()
-                                        ? chosen.fund
-                                        : p.fund,
-                                    expenseCategory:
-                                      chosen?.expenseCategory ||
-                                      p.expenseCategory,
-                                    expenseSubCategory:
-                                      chosen?.expenseSubCategory ||
-                                      p.expenseSubCategory,
-                                  }));
-                                }}
-                                className="mt-1 min-h-[38px] w-full rounded-lg border border-[#a8c4e4] bg-white px-3 py-1.5 text-xs font-normal text-[#132d4c]"
-                              >
-                                <option value="">— เลือกหมวด BUDGET DATA —</option>
-                                {budgetPools
-                                  .slice()
-                                  .sort((a, b) => {
-                                    const aMatch =
-                                      Number(a.year) === Number(draft.year) ? 0 : 1;
-                                    const bMatch =
-                                      Number(b.year) === Number(draft.year) ? 0 : 1;
-                                    if (aMatch !== bMatch) return aMatch - bMatch;
-                                    if (b.year !== a.year) return b.year - a.year;
-                                    return a.name.localeCompare(b.name, 'th');
-                                  })
-                                  .map((bp) => {
-                                    const usage = calculateBudgetPoolUsage(
-                                      bp,
-                                      state.rows,
-                                      existing?.id,
-                                    );
-                                    return (
-                                      <option key={bp.id} value={bp.id}>
-                                        [ปี {bp.year}] {bp.name} (คงเหลือ ฿{' '}
-                                        {formatMoney(usage.remainingAmount)} / ฿{' '}
-                                        {formatMoney(bp.allocatedBudget)})
-                                      </option>
-                                    );
-                                  })}
-                              </select>
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickPoolOpen((v) => !v);
-                                setQuickPoolError('');
-                              }}
-                              className="min-h-[38px] shrink-0 rounded-lg border border-[#9fc0e6] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#134a96] hover:bg-[#dfecfc]"
+                        {selectedBudgetPool && selectedPoolOtherUsage && (() => {
+                          const allocated = Math.max(
+                            0,
+                            Number(selectedBudgetPool.allocatedBudget || 0),
+                          );
+                          const projectedRemaining =
+                            allocated -
+                            selectedPoolOtherUsage.usedAmount -
+                            currentItemPoolAmount;
+                          const isOver = projectedRemaining < -0.005;
+                          const poolClassification =
+                            formatBudgetHierarchyPath(selectedBudgetPool);
+                          return (
+                            <div
+                              className={`rounded-lg border px-3 py-2.5 text-[11px] ${
+                                isOver
+                                  ? 'border-[#edb8b8] bg-[#fff3f3] text-[#9e2525]'
+                                  : 'border-[#bdd3ec] bg-white text-[#23456b]'
+                              }`}
                             >
-                              {quickPoolOpen
-                                ? 'ปิดฟอร์มสร้างหมวด'
-                                : '＋ เพิ่ม BUDGET DATA ใหม่'}
-                            </button>
-                          </div>
-
-                          {quickPoolOpen && (
-                            <div className="rounded-lg border border-[#a9c5e6] bg-white p-3">
-                              <div className="text-[11px] font-semibold text-[#143d70]">
-                                เพิ่มหมวด BUDGET DATA ใหม่ (ปีงบฯ {draft.year})
-                              </div>
-                              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
-                                <input
-                                  type="text"
-                                  maxLength={250}
-                                  placeholder="ชื่อหมวด เช่น ค่าวัสดุสำนักงาน, ค่าวัสดุก่อสร้าง"
-                                  value={quickPoolName}
-                                  onChange={(e) => setQuickPoolName(e.target.value)}
-                                  className="min-h-[36px] rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 text-xs text-[#132d4c]"
-                                />
-                                <input
-                                  type="number"
-                                  min={1}
-                                  step="0.01"
-                                  placeholder="วงเงินตั้งไว้ (บาท)"
-                                  value={quickPoolAmount}
-                                  onChange={(e) => setQuickPoolAmount(e.target.value)}
-                                  className="min-h-[36px] rounded-md border border-[#a8c4e4] bg-[#f8fbff] px-2.5 py-1.5 font-mono-num text-xs text-[#132d4c]"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={handleQuickCreatePool}
-                                  className="min-h-[36px] whitespace-nowrap rounded-md bg-[#1251a8] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0d3e85]"
-                                >
-                                  บันทึกหมวดนี้
-                                </button>
-                              </div>
-                              {quickPoolError && (
-                                <p className="mt-1.5 text-[11px] text-[#b52c2c]">
-                                  {quickPoolError}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {selectedBudgetPool && selectedPoolOtherUsage && (() => {
-                            const allocated = Math.max(
-                              0,
-                              Number(selectedBudgetPool.allocatedBudget || 0),
-                            );
-                            const projectedRemaining =
-                              allocated -
-                              selectedPoolOtherUsage.usedAmount -
-                              currentItemPoolAmount;
-                            const isOver = projectedRemaining < -0.005;
-                            return (
-                              <div
-                                className={`rounded-lg border px-3 py-2.5 text-[11px] ${
-                                  isOver
-                                    ? 'border-[#edb8b8] bg-[#fff3f3] text-[#9e2525]'
-                                    : 'border-[#bdd3ec] bg-white text-[#23456b]'
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span className="font-semibold">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-[#0f2f57]">
                                     วงเงิน “{selectedBudgetPool.name}” (ปีงบฯ{' '}
                                     {selectedBudgetPool.year})
-                                  </span>
-                                  <span className="font-mono-num font-bold">
-                                    คงเหลือหลังรายการนี้:{' '}
-                                    <span
-                                      className={
-                                        isOver ? 'text-[#b52c2c]' : 'text-[#0f6b47]'
-                                      }
-                                    >
-                                      ฿ {formatMoney(projectedRemaining)}
-                                    </span>
-                                  </span>
-                                </div>
-                                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] opacity-90 tabular-nums">
-                                  <span>
-                                    ตั้งไว้ทั้งปี: ฿ {formatMoney(allocated)}
-                                  </span>
-                                  <span>
-                                    รายการอื่นใช้ไปแล้ว: ฿{' '}
-                                    {formatMoney(selectedPoolOtherUsage.usedAmount)}
-                                  </span>
-                                  <span>
-                                    รายการนี้ตัดยอด: ฿{' '}
-                                    {formatMoney(currentItemPoolAmount)}
-                                    {Number(draft.agreed) > 0
-                                      ? ' (ตามวงเงินตกลง)'
-                                      : Number(draft.reference) > 0
-                                        ? ' (อ้างอิงราคากลาง)'
-                                        : ' (อ้างอิงราคากลางในแท็บ 2)'}
-                                  </span>
-                                </div>
-                                {isOver && (
-                                  <div className="mt-1 text-[10.5px] font-semibold text-[#b52c2c]">
-                                    คำเตือน: ยอดตัดวงเงินรวมเกินวงเงินที่ตั้งไว้ ฿{' '}
-                                    {formatMoney(Math.abs(projectedRemaining))} บาท
                                   </div>
-                                )}
+                                  <div className="mt-1 space-y-0.5 text-[10.5px] text-[#355a85]">
+                                    {poolClassification ? (
+                                      <div>
+                                        โครงสร้างงบ:{' '}
+                                        <b className="text-[#114ca0]">
+                                          {poolClassification}
+                                        </b>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        โครงสร้างงบ:{' '}
+                                        <span className="text-[#6985a3]">
+                                          ยังไม่ระบุลำดับขั้นงบประมาณ
+                                        </span>
+                                      </div>
+                                    )}
+                                    {(selectedBudgetPool.planName ||
+                                      selectedBudgetPool.workName ||
+                                      selectedBudgetPool.budgetType ||
+                                      selectedBudgetPool.expenseCategory ||
+                                      selectedBudgetPool.expenseSubCategory) && (
+                                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#4b6b8f]">
+                                        {selectedBudgetPool.planName && (
+                                          <span>แผนงาน: {selectedBudgetPool.planName}</span>
+                                        )}
+                                        {selectedBudgetPool.workName && (
+                                          <span>งาน: {selectedBudgetPool.workName}</span>
+                                        )}
+                                        {selectedBudgetPool.budgetType && (
+                                          <span>งบ: {selectedBudgetPool.budgetType}</span>
+                                        )}
+                                        {selectedBudgetPool.expenseCategory && (
+                                          <span>หมวด: {selectedBudgetPool.expenseCategory}</span>
+                                        )}
+                                        {selectedBudgetPool.expenseSubCategory && (
+                                          <span>
+                                            ประเภทค่าใช้จ่าย:{' '}
+                                            {selectedBudgetPool.expenseSubCategory}
+                                          </span>
+                                        )}
+                                        {selectedBudgetPool.fund && (
+                                          <span>แหล่งงบ: {selectedBudgetPool.fund}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <span className="shrink-0 font-mono-num font-bold">
+                                  คงเหลือหลังรายการนี้:{' '}
+                                  <span
+                                    className={
+                                      isOver ? 'text-[#b52c2c]' : 'text-[#0f6b47]'
+                                    }
+                                  >
+                                    ฿ {formatMoney(projectedRemaining)}
+                                  </span>
+                                </span>
                               </div>
-                            );
-                          })()}
-                        </div>
-                      )}
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#e5eef8] pt-1.5 text-[10.5px] opacity-90 tabular-nums">
+                                <span>
+                                  ตั้งไว้ทั้งปี: ฿ {formatMoney(allocated)}
+                                </span>
+                                <span>
+                                  รายการอื่นใช้ไปแล้ว: ฿{' '}
+                                  {formatMoney(selectedPoolOtherUsage.usedAmount)}
+                                </span>
+                                <span>
+                                  รายการนี้ตัดยอด: ฿{' '}
+                                  {formatMoney(currentItemPoolAmount)}
+                                  {Number(draft.agreed) > 0
+                                    ? ' (ตามวงเงินตกลง)'
+                                    : Number(draft.reference) > 0
+                                      ? ' (อ้างอิงราคากลาง)'
+                                      : ' (รออ้างอิงราคากลางในแท็บ 2)'}
+                                </span>
+                              </div>
+                              {isOver && (
+                                <div className="mt-1 text-[10.5px] font-semibold text-[#b52c2c]">
+                                  คำเตือน: ยอดตัดวงเงินรวมเกินวงเงินที่ตั้งไว้ ฿{' '}
+                                  {formatMoney(Math.abs(projectedRemaining))} บาท
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
@@ -1890,23 +1990,6 @@ export function ProjectEditorModal({
                         />
                       </div>
                     </label>
-
-                    {draft.budgetMode !== 'pool' && (
-                      <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                        วงเงินงบประมาณ (บาท) *
-                        <input
-                          type="number"
-                          required
-                          min={0}
-                          step="0.01"
-                          value={draft.budget}
-                          onChange={(e) =>
-                            setDraft((p) => ({ ...p, budget: e.target.value }))
-                          }
-                          className="mt-1.5 min-h-[40px] w-full rounded-[10px] border border-[#a8c4e4] bg-[#f4f8fe] px-3 py-2 font-mono-num text-xs font-normal text-[#132d4c]"
-                        />
-                      </label>
-                    )}
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
                       ผู้รับผิดชอบ *
@@ -2039,9 +2122,7 @@ export function ProjectEditorModal({
                     </label>
 
                     <label className="block text-[11.5px] font-semibold text-[#1d4069]">
-                      {draft.budgetMode === 'pool'
-                        ? 'ราคากลาง / วงเงินขอซื้อ (บาท)'
-                        : 'ราคากลาง (บาท)'}
+                      ราคากลาง / วงเงินขอซื้อ (บาท)
                       <input
                         type="number"
                         min={0}

@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
+  formatExpenseClassification,
+  resolveProjectBudgetHierarchy,
+} from '../../domain/expenseCategories';
+import {
   canEditProject,
   getAckAt,
   getResponsibleName,
@@ -52,6 +56,11 @@ export function InboxPage({
         ? state.rows.find((r) => r.id === statusModalProjectId) || null
         : null,
     [statusModalProjectId, state.rows],
+  );
+
+  const poolById = useMemo(
+    () => new Map((state.budgetPools || []).map((p) => [p.id, p])),
+    [state.budgetPools],
   );
 
   const prioritizedRows = useMemo(() => {
@@ -198,9 +207,49 @@ export function InboxPage({
                   </td>
 
                   <td className="px-3 py-4 align-middle">
-                    <span className="inline-flex max-w-full items-center rounded-md border border-[#cfe0f2] bg-[#f3f7fc] px-2.5 py-1 text-[11px] font-medium text-[#2d4c70]">
-                      <span className="truncate">{project.fund || project.method || project.type}</span>
-                    </span>
+                    {(() => {
+                      const hierarchy = resolveProjectBudgetHierarchy(
+                        project,
+                        poolById,
+                      );
+                      const primaryLabel =
+                        hierarchy.pool?.name ||
+                        formatExpenseClassification(
+                          hierarchy.expenseCategory,
+                          hierarchy.expenseSubCategory,
+                        ) ||
+                        project.fund ||
+                        project.method ||
+                        project.type;
+                      const secondaryLabel = hierarchy.pool
+                        ? formatExpenseClassification(
+                            hierarchy.expenseCategory,
+                            hierarchy.expenseSubCategory,
+                          ) || hierarchy.budgetType
+                        : '';
+                      return (
+                        <div className="space-y-0.5">
+                          <span
+                            title={primaryLabel}
+                            className={`inline-flex max-w-full items-center rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+                              hierarchy.pool
+                                ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#154b94]'
+                                : 'border-[#e8c98e] bg-[#fff8ea] text-[#85540c]'
+                            }`}
+                          >
+                            <span className="truncate">{primaryLabel}</span>
+                          </span>
+                          {secondaryLabel && (
+                            <div
+                              title={secondaryLabel}
+                              className="truncate text-[10px] text-[#557191]"
+                            >
+                              {secondaryLabel}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   <td className="px-3 py-4 align-middle">

@@ -16,7 +16,8 @@ export const DEFAULT_GOOGLE_SCRIPT_URL: string =
   'https://script.google.com/macros/s/AKfycbxSQAaWvVcrjEEnYUFnX3A8t4DBKS1m5fdfFZ8y7qJK1b75urBE7Dlcxi_OZEuYzT3m/exec';
 
 export const DEFAULT_DRIVE_FOLDER_ID: string =
-  (import.meta.env.VITE_DRIVE_FOLDER_ID as string | undefined)?.trim() || '';
+  (import.meta.env.VITE_DRIVE_FOLDER_ID as string | undefined)?.trim() ||
+  '1wyP35kgPzxgKWJN8nggjc4b6QIfsvcNN';
 
 export const PROCUREMENT_SHEET_NAME = 'ทะเบียนจัดซื้อจัดจ้าง';
 
