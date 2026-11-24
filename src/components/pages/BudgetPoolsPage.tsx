@@ -756,6 +756,9 @@ export function BudgetPoolsPage({
                         (usage.reservedAmount / allocated) * 100,
                       )
                     : 0;
+                const isLowRemaining =
+                  usage.isOverBudget ||
+                  (allocated > 0 && usage.remainingAmount / allocated < 0.1 - 1e-9);
 
                 return (
                   <article
@@ -896,7 +899,7 @@ export function BudgetPoolsPage({
                               คงเหลือ{' '}
                               <strong
                                 className={`font-mono-num font-semibold ${
-                                  usage.isOverBudget
+                                  isLowRemaining
                                     ? 'text-[#b52c2c]'
                                     : 'text-[#0f6b47]'
                                 }`}
@@ -1012,7 +1015,7 @@ export function BudgetPoolsPage({
                               </div>
                               <div
                                 className={`mt-0.5 font-mono-num text-[14px] font-bold ${
-                                  usage.isOverBudget
+                                  isLowRemaining
                                     ? 'text-[#b52c2c]'
                                     : 'text-[#0f6b47]'
                                 }`}
