@@ -11,7 +11,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   BUDGET_GROUP_PRESETS,
   BUDGET_GROUP_TO_CATEGORIES,
@@ -115,8 +115,20 @@ export function BudgetPoolsPage({
     ),
   );
   const [formError, setFormError] = useState('');
+  const [confirmOverlapSave, setConfirmOverlapSave] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BudgetPoolUsage | null>(null);
   const [confirmUnlinkOnDelete, setConfirmUnlinkOnDelete] = useState(false);
+
+  useEffect(() => {
+    setConfirmOverlapSave(false);
+  }, [
+    modalOpen,
+    draft.name,
+    draft.year,
+    draft.planName,
+    draft.workName,
+    draft.budgetType,
+  ]);
 
   const expenseCatalog = useMemo(
     () =>
@@ -295,6 +307,7 @@ export function BudgetPoolsPage({
       ),
     );
     setFormError('');
+    setConfirmOverlapSave(false);
     setModalOpen(true);
   };
 
@@ -317,6 +330,7 @@ export function BudgetPoolsPage({
       notes: pool.notes || '',
     });
     setFormError('');
+    setConfirmOverlapSave(false);
     setModalOpen(true);
   };
 
@@ -347,6 +361,18 @@ export function BudgetPoolsPage({
     );
     if (errors.length > 0) {
       setFormError(errors.join('\n'));
+      return;
+    }
+
+    const overlapWarnings = findBudgetPoolOverlapWarnings(
+      payload,
+      budgetPools,
+      editingPoolId || undefined,
+    );
+    if (overlapWarnings.length > 0 && !confirmOverlapSave) {
+      setFormError(
+        'กรุณาตรวจสอบรายการหมวดวงเงินงบประมาณที่มีชื่อคล้ายหรือซ้ำกันด้านบน และติ๊กยืนยันก่อนบันทึก',
+      );
       return;
     }
 
@@ -572,6 +598,28 @@ export function BudgetPoolsPage({
             </div>
           )}
 
+          {duplicateAnalysis.similarNameGroups.length > 0 && (
+            <div className="mb-4 rounded-xl border border-[#ebd09c] bg-[#fffaf0] px-4 py-3 text-xs text-[#7c4d0c]">
+              <div className="flex items-center gap-1.5 font-bold text-[#8a5308]">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#c27803]" />
+                พบชื่อหมวดวงเงินงบประมาณที่คล้ายกันในระบบ (กรุณาตรวจสอบว่าใช่ประเภทเดียวกันหรือไม่)
+              </div>
+              <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[11px]">
+                {duplicateAnalysis.similarNameGroups.map((g, idx) => (
+                  <li key={idx}>
+                    <b>ปีงบฯ {g.year}:</b>{' '}
+                    {g.pools
+                      .map((p) => {
+                        const hierarchy = formatBudgetHierarchyPath(p);
+                        return `“${p.name}”${hierarchy ? ` [${hierarchy}]` : ''} ฿${formatMoney(p.allocatedBudget)}`;
+                      })
+                      .join(' · ')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {usages.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#b6cde6] bg-[#f5f9fe] px-6 py-12 text-center">
               <span className="grid h-11 w-11 place-items-center rounded-lg bg-[#dcebfa] text-[#1455b3]">
@@ -649,6 +697,13 @@ export function BudgetPoolsPage({
                                 ชื่อ/รหัสซ้ำซ้อน
                               </span>
                             )}
+                            {!duplicateAnalysis.exactDuplicateIds.has(pool.id) &&
+                              duplicateAnalysis.similarIds.has(pool.id) && (
+                                <span className="inline-flex items-center gap-1 rounded border border-[#ebd09c] bg-[#fff8e8] px-2 py-0.5 text-[10.5px] font-semibold text-[#8a5308]">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  ชื่อคล้ายหมวดอื่น
+                                </span>
+                              )}
                             {usage.isOverBudget && (
                               <span className="inline-flex items-center gap-1 rounded border border-[#f0b4b4] bg-[#fff0f0] px-2 py-0.5 text-[10.5px] font-semibold text-[#b52c2c]">
                                 <AlertTriangle className="h-3 w-3" />
@@ -1289,14 +1344,45 @@ export function BudgetPoolsPage({
                       ))}
                     </div>
                   )}
-                  {draftLiveChecks.overlapWarnings.map((w, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg border border-[#ebd09c] bg-[#fff8e8] px-3 py-2 text-[11.5px] text-[#7c4d0c]"
-                    >
-                      • {w.message}
+                  {draftLiveChecks.overlapWarnings.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-[#e3b96c] bg-[#fff8e8] p-3 text-[11.5px] text-[#7c4d0c]">
+                      <div className="flex items-center gap-1.5 font-bold text-[#8a5308]">
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-[#c27803]" />
+                        แจ้งเตือนเพื่อตรวจสอบก่อนบันทึก
+                      </div>
+                      {draftLiveChecks.overlapWarnings.map((w, i) => (
+                        <div key={i} className="space-y-1">
+                          <div>• {w.message}</div>
+                          <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-[#6d4309]">
+                            {w.pools.map((p) => {
+                              const hierarchy = formatBudgetHierarchyPath(p);
+                              return (
+                                <li key={p.id}>
+                                  <b>{p.name}</b>
+                                  {hierarchy ? ` (${hierarchy})` : ''} · วงเงิน ฿
+                                  {formatMoney(p.allocatedBudget)}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
+                      <label className="mt-1 flex cursor-pointer items-start gap-2 rounded-md border border-[#e3b96c] bg-white px-2.5 py-2 text-[11.5px] font-semibold text-[#6b3f04]">
+                        <input
+                          type="checkbox"
+                          checked={confirmOverlapSave}
+                          onChange={(e) => {
+                            setConfirmOverlapSave(e.target.checked);
+                            if (e.target.checked) setFormError('');
+                          }}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#b45309]"
+                        />
+                        <span>
+                          ตรวจสอบแล้ว ไม่ใช่หมวดเดียวกัน ยืนยันต้องการบันทึก
+                        </span>
+                      </label>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
 

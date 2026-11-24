@@ -274,15 +274,114 @@ function normalizeBudgetKey(value: string | undefined | null): string {
     .toLowerCase();
 }
 
+const THAI_BUDGET_PREFIXES = [
+  'รายการจัดซื้อ',
+  'รายการจัดจ้าง',
+  'ค่าใช้จ่าย',
+  'รายจ่าย',
+  'จัดซื้อ',
+  'จัดจ้าง',
+  'โครงการ',
+  'รายการ',
+  'ค่า',
+  'งาน',
+  'เงิน',
+  'ซื้อ',
+  'จ้าง',
+];
+
+function normalizeBudgetNameStem(value: string | undefined | null): {
+  compact: string;
+  stem: string;
+  core: string;
+} {
+  const compact = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-_/.,()[\]{}'"`“”‘’]+/g, '');
+
+  let stem = compact;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const prefix of THAI_BUDGET_PREFIXES) {
+      if (stem.startsWith(prefix) && stem.length - prefix.length >= 3) {
+        stem = stem.slice(prefix.length);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  const core = stem.replace(/(และ|หรือ|เพื่อ|เกี่ยวกับ|สำหรับ|ด้าน)/g, '');
+  return { compact, stem, core: core.length >= 3 ? core : stem };
+}
+
+function getBigramDiceSimilarity(a: string, b: string): number {
+  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+  const bigramsA = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const bg = a.slice(i, i + 2);
+    bigramsA.set(bg, (bigramsA.get(bg) || 0) + 1);
+  }
+  let intersection = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const bg = b.slice(i, i + 2);
+    const count = bigramsA.get(bg) || 0;
+    if (count > 0) {
+      intersection += 1;
+      bigramsA.set(bg, count - 1);
+    }
+  }
+  return (2 * intersection) / (a.length - 1 + (b.length - 1));
+}
+
+export function areBudgetPoolNamesSimilar(a: string, b: string): boolean {
+  const keyA = normalizeBudgetKey(a);
+  const keyB = normalizeBudgetKey(b);
+  if (!keyA || !keyB || keyA === keyB) return false;
+
+  const normA = normalizeBudgetNameStem(a);
+  const normB = normalizeBudgetNameStem(b);
+  if (!normA.stem || !normB.stem) return false;
+
+  // 1) Exact match after stripping prefixes/punctuation (e.g. ค่าวัสดุสำนักงาน vs วัสดุสำนักงาน)
+  if (normA.stem === normB.stem || normA.core === normB.core) {
+    return true;
+  }
+
+  // 2) Meaningful containment (e.g. วัสดุสำนักงาน vs ค่าวัสดุสำนักงานและเครื่องเขียน)
+  const shorter =
+    normA.core.length <= normB.core.length ? normA.core : normB.core;
+  const longer =
+    normA.core.length <= normB.core.length ? normB.core : normA.core;
+  if (
+    shorter.length >= 5 &&
+    longer.includes(shorter) &&
+    shorter.length / longer.length >= 0.45
+  ) {
+    return true;
+  }
+
+  // 3) Thai bigram similarity (e.g. ค่าวัสดุไฟฟ้าและวิทยุ vs ค่าวัสดุไฟฟ้าวิทยุ)
+  if (normA.core.length >= 5 && normB.core.length >= 5) {
+    return getBigramDiceSimilarity(normA.core, normB.core) >= 0.72;
+  }
+
+  return false;
+}
+
 export interface BudgetPoolOverlapWarning {
-  type: 'same_name_other_scope';
+  type: 'same_name_other_scope' | 'similar_name';
   pools: BudgetPool[];
   message: string;
 }
 
 export interface DuplicatePoolAnalysis {
   exactDuplicateGroups: Array<{ reason: string; pools: BudgetPool[] }>;
+  similarNameGroups: Array<{ year: number; pools: BudgetPool[] }>;
   exactDuplicateIds: Set<string>;
+  similarIds: Set<string>;
 }
 
 export function validateBudgetPool(
@@ -372,7 +471,10 @@ export function findBudgetPoolOverlapWarnings(
   const year = Number(draft.year);
   if (!Number.isInteger(year)) return warnings;
 
-  const draftName = normalizeBudgetKey(draft.name);
+  const rawName = String(draft.name || '').trim();
+  const draftName = normalizeBudgetKey(rawName);
+  if (!draftName) return warnings;
+
   const draftPlan = normalizeBudgetKey(draft.planName);
   const draftWork = normalizeBudgetKey(draft.workName);
   const draftBudgetType = normalizeBudgetKey(draft.budgetType);
@@ -381,21 +483,31 @@ export function findBudgetPoolOverlapWarnings(
     (p) => p.id !== editingId && Number(p.year) === year,
   );
 
-  if (draftName) {
-    const sameNameDifferentScope = othersInYear.filter(
-      (p) =>
-        normalizeBudgetKey(p.name) === draftName &&
-        (normalizeBudgetKey(p.planName) !== draftPlan ||
-          normalizeBudgetKey(p.workName) !== draftWork ||
-          normalizeBudgetKey(p.budgetType) !== draftBudgetType),
-    );
-    if (sameNameDifferentScope.length > 0) {
-      warnings.push({
-        type: 'same_name_other_scope',
-        pools: sameNameDifferentScope,
-        message: `มีชื่อหมวด "${String(draft.name || '').trim()}" อยู่แล้ว ${sameNameDifferentScope.length} รายการในปีงบฯ ${year} (ในแผนงาน/งานอื่น) — โปรดตรวจสอบว่าไม่ใช่งบประมาณซ้ำกัน`,
-      });
-    }
+  const sameNameDifferentScope = othersInYear.filter(
+    (p) =>
+      normalizeBudgetKey(p.name) === draftName &&
+      (normalizeBudgetKey(p.planName) !== draftPlan ||
+        normalizeBudgetKey(p.workName) !== draftWork ||
+        normalizeBudgetKey(p.budgetType) !== draftBudgetType),
+  );
+  if (sameNameDifferentScope.length > 0) {
+    warnings.push({
+      type: 'same_name_other_scope',
+      pools: sameNameDifferentScope,
+      message: `มีชื่อหมวด “${rawName}” อยู่แล้ว ${sameNameDifferentScope.length} รายการในปีงบฯ ${year} (ในแผนงาน/งานอื่น) — โปรดตรวจสอบก่อนยืนยัน`,
+    });
+  }
+
+  const similarPools = othersInYear.filter((p) =>
+    areBudgetPoolNamesSimilar(rawName, p.name),
+  );
+  if (similarPools.length > 0) {
+    const similarNames = similarPools.map((p) => `“${p.name}”`).join(', ');
+    warnings.push({
+      type: 'similar_name',
+      pools: similarPools,
+      message: `พบชื่อหมวดวงเงินงบประมาณที่คล้ายกันในปีงบฯ ${year}: ${similarNames} — อาจเป็นหมวดค่าใช้จ่ายเดียวกัน กรุณาตรวจสอบก่อนบันทึก`,
+    });
   }
 
   return warnings;
@@ -452,8 +564,49 @@ export function findDuplicatePoolGroups(
     }
   }
 
+  // Group pools with similar names in the same fiscal year via connected components
+  const similarNameGroups: Array<{ year: number; pools: BudgetPool[] }> = [];
+  const similarIds = new Set<string>();
+  const poolsByYear = new Map<number, BudgetPool[]>();
+  for (const p of pools) {
+    const y = Number(p.year) || 0;
+    const list = poolsByYear.get(y) || [];
+    list.push(p);
+    poolsByYear.set(y, list);
+  }
+
+  for (const [year, yearList] of poolsByYear.entries()) {
+    const visited = new Set<string>();
+    for (let i = 0; i < yearList.length; i++) {
+      const start = yearList[i];
+      if (visited.has(start.id)) continue;
+      const component: BudgetPool[] = [start];
+      visited.add(start.id);
+      const queue: BudgetPool[] = [start];
+
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        for (const candidate of yearList) {
+          if (visited.has(candidate.id)) continue;
+          if (areBudgetPoolNamesSimilar(curr.name, candidate.name)) {
+            visited.add(candidate.id);
+            component.push(candidate);
+            queue.push(candidate);
+          }
+        }
+      }
+
+      if (component.length > 1) {
+        similarNameGroups.push({ year, pools: component });
+        component.forEach((p) => similarIds.add(p.id));
+      }
+    }
+  }
+
   return {
     exactDuplicateGroups,
+    similarNameGroups,
     exactDuplicateIds,
+    similarIds,
   };
 }

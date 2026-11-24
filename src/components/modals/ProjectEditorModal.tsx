@@ -269,6 +269,7 @@ export function ProjectEditorModal({
   const [quickPoolName, setQuickPoolName] = useState<string>('');
   const [quickPoolAmount, setQuickPoolAmount] = useState<string>('');
   const [quickPoolError, setQuickPoolError] = useState<string>('');
+  const [confirmQuickPoolOverlap, setConfirmQuickPoolOverlap] = useState<boolean>(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState<boolean>(false);
   const [positionOverrides, setPositionOverrides] = useState<PersonPositionStore>(() =>
     loadPersonPositionOverrides(),
@@ -303,10 +304,24 @@ export function ProjectEditorModal({
     setQuickPoolName('');
     setQuickPoolAmount('');
     setQuickPoolError('');
+    setConfirmQuickPoolOverlap(false);
     setPositionOverrides(loadPersonPositionOverrides());
     touchedPositionKeysRef.current.clear();
     codeManuallyEditedRef.current = Boolean(existing);
   }, [projectId, initialTab, existing, initialPool]);
+
+  useEffect(() => {
+    setConfirmQuickPoolOverlap(false);
+  }, [
+    quickPoolOpen,
+    draft.year,
+    quickPoolPlan,
+    quickPoolWork,
+    quickPoolBudgetType,
+    quickPoolCategory,
+    quickPoolSubCategory,
+    quickPoolName,
+  ]);
 
   const expenseCatalog = useMemo(
     () =>
@@ -492,6 +507,13 @@ export function ProjectEditorModal({
       setQuickPoolError(errors.join(' · '));
       return;
     }
+    const overlapWarnings = findBudgetPoolOverlapWarnings(newPool, budgetPools);
+    if (overlapWarnings.length > 0 && !confirmQuickPoolOverlap) {
+      setQuickPoolError(
+        'พบชื่อหมวดวงเงินที่คล้ายหรือซ้ำกับรายการเดิม กรุณาตรวจสอบรายละเอียดด้านบนและติ๊กยืนยันก่อนบันทึก',
+      );
+      return;
+    }
     const ok = saveBudgetPool(newPool);
     if (ok) {
       setDraft((p) => ({
@@ -512,6 +534,7 @@ export function ProjectEditorModal({
       setQuickPoolSubCategory('');
       setQuickPoolName('');
       setQuickPoolAmount('');
+      setConfirmQuickPoolOverlap(false);
       showToast(`สร้างหมวดวงเงิน "${newPool.name}" และผูกให้รายการนี้แล้ว`);
     }
   };
@@ -1895,14 +1918,44 @@ export function ProjectEditorModal({
                                     • {msg}
                                   </p>
                                 ))}
-                                {quickPoolLiveChecks.overlapWarnings.map((w, i) => (
-                                  <p
-                                    key={`warn-${i}`}
-                                    className="rounded border border-[#ebd09c] bg-[#fff8e8] px-2.5 py-1 text-[11px] text-[#7c4d0c]"
-                                  >
-                                    • {w.message}
-                                  </p>
-                                ))}
+                                {quickPoolLiveChecks.overlapWarnings.length > 0 && (
+                                  <div className="space-y-1.5 rounded border border-[#e3b96c] bg-[#fff8e8] p-2.5 text-[11px] text-[#7c4d0c]">
+                                    <div className="font-bold text-[#8a5308]">
+                                      แจ้งเตือนเพื่อตรวจสอบก่อนบันทึก
+                                    </div>
+                                    {quickPoolLiveChecks.overlapWarnings.map((w, i) => (
+                                      <div key={`warn-${i}`} className="space-y-0.5">
+                                        <div>• {w.message}</div>
+                                        <ul className="list-disc space-y-0.5 pl-4 text-[10.5px] text-[#6d4309]">
+                                          {w.pools.map((p) => {
+                                            const hierarchy = formatBudgetHierarchyPath(p);
+                                            return (
+                                              <li key={p.id}>
+                                                <b>{p.name}</b>
+                                                {hierarchy ? ` (${hierarchy})` : ''} · วงเงิน ฿
+                                                {formatMoney(p.allocatedBudget)}
+                                              </li>
+                                            );
+                                          })}
+                                        </ul>
+                                      </div>
+                                    ))}
+                                    <label className="mt-1 flex cursor-pointer items-start gap-2 rounded border border-[#e3b96c] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#6b3f04]">
+                                      <input
+                                        type="checkbox"
+                                        checked={confirmQuickPoolOverlap}
+                                        onChange={(e) => {
+                                          setConfirmQuickPoolOverlap(e.target.checked);
+                                          if (e.target.checked) setQuickPoolError('');
+                                        }}
+                                        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#b45309]"
+                                      />
+                                      <span>
+                                        ตรวจสอบแล้ว ไม่ใช่หมวดเดียวกัน ยืนยันต้องการบันทึก
+                                      </span>
+                                    </label>
+                                  </div>
+                                )}
                               </div>
                             )}
                             {quickPoolError && (
